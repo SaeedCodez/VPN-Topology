@@ -162,7 +162,7 @@ function saveLayout(pos: Record<string, { x: number; y: number }>) {
 
 async function resetLayout() {
   layout.value = {}
-  await api('/api/layout', { method: 'PUT', body: JSON.stringify({}) }).catch(() => {})
+  await api('/api/layout', { method: 'DELETE' }).catch(() => {})
 }
 
 function describe(id: string): Promise<Describe> {

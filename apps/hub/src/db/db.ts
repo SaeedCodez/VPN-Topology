@@ -163,6 +163,10 @@ export class Db {
     }
   }
 
+  async clearLayout() {
+    await this.db.delete(s.layout);
+  }
+
   async addSilence(alertId: string, instance: string, until: Date, reason: string) {
     await this.db.insert(s.silences).values({ alertId, instance, until, reason });
   }

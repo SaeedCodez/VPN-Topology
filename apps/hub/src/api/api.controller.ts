@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Post, Put, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AgentInfo, Bundle, Series } from '../contract';
@@ -296,6 +296,13 @@ export class ApiController {
     }
     await this.hub.db.saveLayout(clean);
     return { saved: Object.keys(clean).length };
+  }
+
+  /** Forget all saved positions (the board falls back to auto-layout). */
+  @Delete('layout')
+  async clearLayout() {
+    await this.hub.db.clearLayout();
+    return { cleared: true };
   }
 
   @Post('silence')
