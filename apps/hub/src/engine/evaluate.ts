@@ -229,7 +229,7 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
     }
     for (const m of n.metrics ?? []) metrics[m.id] = { value: obs.metrics[m.key] ?? null, unit: unitOf(m), label: m.label || m.id };
     for (const c of n.checks ?? []) {
-      if (!metrics[c.id]) metrics[c.id] = { value: obs.checks[c.key]?.value ?? null, unit: unitOf(c), label: c.title || c.id };
+      if (!metrics[c.id]) metrics[c.id] = { value: obs.checks[c.key]?.value ?? null, unit: unitOf(c), label: c.label || c.id };
     }
     const bootTime = no?.bootTime ?? null;
     nodes[n.id] = {

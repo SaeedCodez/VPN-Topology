@@ -85,7 +85,7 @@ func TestLoadGood(t *testing.T) {
 func TestErrors(t *testing.T) {
 	cases := []struct {
 		name, body, want string
-		line           int
+		line             int
 	}{
 		{"unknown node", strings.Replace(goodComponent, "to: relay\n", "to: rely\n", 1), `unknown node "rely"`, 10},
 		{"did you mean", strings.Replace(goodComponent, "to: relay\n", "to: rely\n", 1), `did you mean "relay"`, 10},
@@ -153,10 +153,10 @@ func TestExpr(t *testing.T) {
 		}
 	}
 	bad := map[string]string{
-		"link.e1.health > down":     "use == or !=",
-		"link.e1.health == 5s":      "is a status",
-		"link.e1.speed == ok":       "no field",
-		"host.e1.health == ok":      "unknown entity",
+		"link.e1.health > down":      "use == or !=",
+		"link.e1.health == 5s":       "is a status",
+		"link.e1.speed == ok":        "no field",
+		"host.e1.health == ok":       "unknown entity",
 		"link.e1.health == down for": "expected a duration",
 	}
 	for s, want := range bad {

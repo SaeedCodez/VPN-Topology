@@ -1,0 +1,278 @@
+@import '@vue-flow/core/dist/style.css';
+@import '@vue-flow/controls/dist/style.css';
+@import '@vue-flow/minimap/dist/style.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/*
+ * Design tokens. Defined once per theme; everything (cards, edges, grid,
+ * minimap, charts) reads them. Values are RGB triplets so Tailwind can add
+ * alpha. Colour is used only for status.
+ */
+:root,
+[data-theme='light'] {
+  --bg: 250 250 250;
+  --surface: 255 255 255;
+  --subtle: 244 244 245;
+  --line: 233 233 235;
+  --line-strong: 212 212 216;
+  --fg: 10 10 10;
+  --fg-2: 82 82 91;
+  --fg-3: 140 140 150;
+  --accent: 10 114 239;
+  --ok: 22 163 74;
+  --warn: 217 119 6;
+  --down: 220 38 38;
+  --unknown: 161 161 170;
+  --affected: 176 138 74;
+  --grid: 214 214 219;
+  --edge-idle: 190 190 198;
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 28px rgb(0 0 0 / 0.07);
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: 8 8 8;
+  --surface: 17 17 17;
+  --subtle: 26 26 28;
+  --line: 38 38 40;
+  --line-strong: 58 58 62;
+  --fg: 237 237 237;
+  --fg-2: 161 161 170;
+  --fg-3: 105 105 112;
+  --accent: 59 142 234;
+  --ok: 34 197 94;
+  --warn: 245 158 11;
+  --down: 239 68 68;
+  --unknown: 113 113 122;
+  --affected: 184 151 95;
+  --grid: 40 40 44;
+  --edge-idle: 70 70 76;
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 32px rgb(0 0 0 / 0.45);
+  color-scheme: dark;
+}
+
+html,
+body,
+#__nuxt {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-fg font-sans antialiased;
+  font-size: 15px;
+  line-height: 22px;
+  font-feature-settings: 'ss01', 'cv11';
+}
+
+/* Tabular numbers for every metric. */
+.num,
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-ctl border border-line bg-surface px-3.5 text-[14px] font-medium text-fg transition-colors hover:bg-subtle disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-ctl px-3 text-[14px] font-medium text-fg-2 transition-colors hover:bg-subtle hover:text-fg;
+  }
+  .btn-primary {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-ctl bg-fg px-4 text-[14px] font-medium text-bg transition-opacity hover:opacity-90 disabled:opacity-50;
+  }
+  .input {
+    @apply h-10 w-full rounded-ctl border border-line bg-surface px-3 text-[15px] text-fg placeholder:text-fg-3 focus:border-line-strong focus:outline-none;
+  }
+  .pill {
+    @apply inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium leading-none;
+  }
+  .card {
+    @apply rounded-card border border-line bg-surface;
+  }
+  .floating {
+    @apply rounded-card border border-line bg-surface shadow-float;
+  }
+  .label {
+    @apply text-[12px] font-medium uppercase tracking-[0.06em] text-fg-3;
+  }
+}
+
+/* Status dots */
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: none;
+  background: rgb(var(--unknown));
+}
+.dot.ok { background: rgb(var(--ok)); }
+.dot.degraded { background: rgb(var(--warn)); }
+.dot.down { background: rgb(var(--down)); box-shadow: 0 0 0 4px rgb(var(--down) / 0.18); }
+.dot.unknown { background: rgb(var(--unknown)); }
+.dot.hollow { background: transparent; box-shadow: inset 0 0 0 1.5px rgb(var(--fg-3)); }
+.dot.affected { background: rgb(var(--affected)); }
+
+/* ---------------------------------------------------------------- Vue Flow */
+
+.vue-flow {
+  background: rgb(var(--bg));
+}
+.vue-flow__background pattern circle,
+.vue-flow__background circle {
+  fill: rgb(var(--grid));
+}
+.vue-flow__node {
+  border-radius: 16px;
+}
+.vue-flow__node.selected > .node-card,
+.vue-flow__node:focus-visible > .node-card {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}
+.vue-flow__node:focus-visible {
+  outline: none;
+}
+.vue-flow__node-frame {
+  pointer-events: none !important;
+}
+.vue-flow__handle {
+  width: 8px;
+  height: 8px;
+  min-width: 0;
+  min-height: 0;
+  border: 1.5px solid rgb(var(--line-strong));
+  background: rgb(var(--surface));
+  opacity: 0;
+}
+.vue-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.vue-flow__minimap {
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--line));
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-float);
+}
+.vue-flow__minimap-mask {
+  fill: rgb(var(--bg) / 0.65);
+}
+.vue-flow__minimap-node { fill: rgb(var(--line-strong)); stroke: none; }
+.vue-flow__minimap-node.st-ok { fill: rgb(var(--ok)); }
+.vue-flow__minimap-node.st-degraded { fill: rgb(var(--warn)); }
+.vue-flow__minimap-node.st-down { fill: rgb(var(--down)); }
+.vue-flow__minimap-node.st-unknown { fill: rgb(var(--unknown)); }
+.vue-flow__minimap-node.st-frame { fill: rgb(var(--subtle)); }
+
+.vue-flow__controls {
+  border: 1px solid rgb(var(--line));
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-float);
+}
+.vue-flow__controls-button {
+  width: 40px;
+  height: 40px;
+  background: rgb(var(--surface));
+  border-bottom: 1px solid rgb(var(--line));
+  color: rgb(var(--fg-2));
+}
+.vue-flow__controls-button svg {
+  fill: currentColor;
+  max-width: 14px;
+  max-height: 14px;
+}
+.vue-flow__controls-button:hover {
+  background: rgb(var(--subtle));
+  color: rgb(var(--fg));
+}
+
+/* Edges: red edges pulse; motion stops with reduced motion, colours stay. */
+@keyframes edge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.edge-down .edge-main {
+  animation: edge-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ring-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(var(--down) / 0.45); }
+  100% { box-shadow: 0 0 0 10px rgb(var(--down) / 0); }
+}
+.pulse-ring {
+  animation: ring-pulse 1.8s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .edge-down .edge-main,
+  .pulse-ring {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Thin scrollbars inside panels */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line-strong)) transparent;
+}
+
+input[type='range'].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 28px;
+  background: transparent;
+  width: 100%;
+}
+input[type='range'].slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 99px;
+  background: rgb(var(--line-strong));
+}
+input[type='range'].slider::-moz-range-track {
+  height: 4px;
+  border-radius: 99px;
+  background: rgb(var(--line-strong));
+}
+input[type='range'].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 99px;
+  background: rgb(var(--surface));
+  border: 2px solid rgb(var(--fg));
+  box-shadow: var(--shadow-float);
+}
+input[type='range'].slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 99px;
+  background: rgb(var(--surface));
+  border: 2px solid rgb(var(--fg));
+}
