@@ -91,9 +91,25 @@ ssh root@81.12.50.23 'curl -s -u "$METRICS_USER:$METRICS_PASS" http://127.0.0.1:
 Also found: the node's Xray gRPC API listens on an abstract unix socket that any
 local user can reach (`HandlerService` without auth) — worth a look separately.
 
+## Try it with Docker (demo, 1 command)
+
+Simulated data and replays of the real incidents; no servers, no secrets.
+
+```bash
+git clone -b claude/vpn-topology-dashboard-ylokrt https://github.com/SaeedCodez/VPN-Topology.git
+cd VPN-Topology
+docker compose -f docker-compose.demo.yml up --build
+```
+
+- Board: http://localhost:8080 ("Replay incident" plays 2026-10-13 / 2026-10-20 / 2026-10-22 live)
+- CLI without installing Go (the hub image contains `vpnmap`):
+  `docker compose -f docker-compose.demo.yml exec -e VPNMAP_HUB=http://localhost:4000 hub vpnmap status`
+- From Iran, pass mirrors: `NPM_REGISTRY=... ALPINE_MIRROR=... GOPROXY=... docker compose -f docker-compose.demo.yml up --build`
+- Stop: `docker compose -f docker-compose.demo.yml down` (demo data lives in memory and is regenerated on start)
+
 ## Running
 
-**Demo (no servers, no secrets):**
+**Demo without Docker (no servers, no secrets):**
 
 ```bash
 pnpm install
