@@ -1,6 +1,6 @@
 import { Bundle, CheckSpec, Health, TopoLink } from '../contract';
 import { CheckObs, LinkObs, NodeObs, Observations, RouteObs, emptyNodeObs } from './observations';
-import { LatestStore, promKey } from './store';
+import { LatestStore, probeSideError, promKey } from './store';
 import { httpId, logId, nftName, PROM_REMNAWAVE, ssId } from './ids';
 
 /**
@@ -291,6 +291,7 @@ const resolvers: Record<string, Resolver> = {
     const wrongCountry = r.ok && c.params.expect_country && r.exit_country && r.exit_country !== c.params.expect_country;
     if (wrongCountry) return { status: 'down', value: r.latency_ms, detail: `exit country ${r.exit_country}, expected ${c.params.expect_country}`, observedAt: p.lastAt, source: 'probe' };
     if (r.ok) return { status: 'ok', value: r.latency_ms, detail: `204 in ${fmtMs(r.latency_ms)} · exit ${r.exit_country ?? '?'}`, observedAt: p.lastAt, source: 'probe' };
+    if (probeSideError(r.error)) return { status: 'unknown', value: null, detail: `probe client not working: ${r.error}`, observedAt: p.lastAt, source: 'probe' };
     return {
       status: p.failures >= need ? 'down' : 'degraded',
       value: null,

@@ -55,6 +55,7 @@ var MapSchema = &S{Type: "object", Desc: "Global settings, groups and observatio
 		{Name: "stale_after", S: sDuration},
 		{Name: "reboot_window", S: sDuration},
 		{Name: "hub", S: &S{Type: "string", Pattern: `^https?://`, Desc: "Public hub URL, used in generated agent configs."}},
+		{Name: "critical_squads", S: &S{Type: "array", Items: &S{Type: "string"}, Desc: "Paying squads: a broken route serving one of them turns the board red."}},
 	}}},
 	{Name: "groups", Required: true, S: &S{Type: "array", Items: &S{Type: "object", Fields: []F{
 		{Name: "id", S: sID, Required: true},

@@ -62,6 +62,9 @@ test('steady state: only the known dead US tunnel is a root cause', () => {
   const roots = s.overall.rootCauses.map((r: any) => `${r.kind}:${r.elementId}`);
   assert.deepEqual(roots, ['link:e8-us']);
   assert.equal(s.routes.main.status, 'ok');
+  // Only test users (Mullvad-Test) lost a route: amber, not red.
+  assert.equal(s.overall.status, 'degraded');
+  assert.equal(s.overall.rootCauses[0].critical, false);
   assert.ok(s.links.e1.downBps > 0, 'E1 carries traffic');
   assert.ok(s.links.e3.trafficSource === 'primary', 'E3 traffic from Xray stats');
 });
@@ -76,6 +79,7 @@ test('2026-10-13: :9000 closed after node 3 reboot → XBridger node 3 is the ro
   assert.ok(rc.affected.links.includes('e3'));
   assert.equal(s.nodes['relay-1'].impact, null, 'relay still serves the .ir route');
   assert.equal(s.overall.status, 'down');
+  assert.equal(rc.critical, true, 'Premium/Economic lost their route');
   const ids = s.alerts.map((a: any) => a.id);
   assert.ok(ids.includes('main-probe-failing'));
   assert.ok(ids.includes('xbridger-connection-not-running'));
@@ -101,6 +105,16 @@ test('2026-10-22: rw-api hang (container healthy) → panel is the root cause, u
   const backend = s.nodes.panel.checks.find((c: any) => c.id === 'backend');
   assert.equal(backend.status, 'ok', 'Docker still says healthy');
   assert.ok(s.alerts.some((a: any) => a.id === 'panel-api-slow'));
+});
+
+test('a probe that cannot start its own client is "no data", not a broken route', () => {
+  const store = new LatestStore();
+  const push = (error: string) =>
+    store.ingest({ v: 1, agent: { node: 'probe', kind: 'probe', version: 't', hostname: 'h', config_sha: '', capabilities: {} }, ts: new Date().toISOString(), seq: 1, probes: [{ route: 'main', ok: false, latency_ms: 0, error, at: new Date(Date.now() + Math.random()).toISOString() }] }, Date.now());
+  for (let i = 0; i < 5; i++) push('sing-box: outbound file: no such file');
+  assert.equal(store.probes.get('main')!.failures, 0);
+  const obs = observe(b, store, Date.now());
+  assert.equal(obs.checks['route:main:probe'].status, 'unknown');
 });
 
 test('time parsing for --at', () => {

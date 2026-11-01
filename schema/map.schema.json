@@ -58,6 +58,13 @@
     "settings": {
       "additionalProperties": false,
       "properties": {
+        "critical_squads": {
+          "description": "Paying squads: a broken route serving one of them turns the board red.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "hub": {
           "description": "Public hub URL, used in generated agent configs.",
           "pattern": "^https?://",

@@ -1,4 +1,4 @@
-# VPN Topology on Coolify (171.22.27.214): hub, web, postgres, victoriametrics.
+# VPN Topology on Coolify (171.22.27.214): hub, web, probe, postgres, victoriametrics.
 # Only `web` is exposed (Coolify's proxy terminates HTTPS for map.imdev.ir).
 # Values come from Coolify env vars; see .env.example for the names.
 name: vpn-topology
@@ -47,6 +47,23 @@ services:
     depends_on: [hub]
     expose: ['8080']
     # Coolify: set the domain map.imdev.ir on this service, port 8080.
+
+  # End-to-end probe (temporary here; it should move to an Iranian server
+  # outside the user path). A real VPN client per route, monitoring user only.
+  probe:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile.probe
+      args: *build-args
+    restart: unless-stopped
+    depends_on: [web]
+    environment:
+      VPNMAP_TOKEN: ${PROBE_TOKEN}
+      PROBE_HUB_URL: ${PUBLIC_URL:-https://map.imdev.ir}
+      PROBE_OUTBOUND_MAIN: ${PROBE_OUTBOUND_MAIN:-}
+      PROBE_OUTBOUND_MULLVAD_DE: ${PROBE_OUTBOUND_MULLVAD_DE:-}
+      PROBE_OUTBOUND_MULLVAD_US: ${PROBE_OUTBOUND_MULLVAD_US:-}
+      PROBE_OUTBOUND_MULLVAD_TR: ${PROBE_OUTBOUND_MULLVAD_TR:-}
 
   postgres:
     image: postgres:17-alpine

@@ -9,7 +9,10 @@ settings:
   timezone: Asia/Tehran
   stale_after: 30s        # no data for longer than this = grey ("no data")
   reboot_window: 30m      # reboot badge for this long after a boot
-  hub: https://map.imdev.ir   # domain to confirm
+  hub: https://map.imdev.ir
+  # Paying squads: any broken route serving them makes the board red (outage),
+  # even with few users online. Other squads (Mullvad-Test, Xbox) only make it amber.
+  critical_squads: [Premium, Economic]
 
 groups:
   - { id: iran-dc, title: Iran DC · same LAN, kind: datacenter, notes: "Panel, Relay 1 and XBridger node 3 share one LAN (0.2 ms)." }
@@ -23,7 +26,10 @@ groups:
 sources:
   - id: probe
     title: E2E probe (Iran, outside the user path)
-    location: TO DECIDE
+    location: Coolify server 171.22.27.214 (temporary)
     notes: >-
-      Runs sing-box with a dedicated monitoring user and tcp-connect checks.
-      Must be a server inside Iran that no user traffic passes through.
+      Runs sing-box with a dedicated monitoring user and tcp-connect checks, as
+      the `probe` container of the VPN Topology stack on Coolify for now. It
+      should move to a server inside Iran that no user traffic passes through
+      (Coolify's location is UNVERIFIED; from abroad the results show the
+      foreign vantage point).
