@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=../../schema/topology.schema.json
+component: subscription
+title: Subscription delivery and panel UI (ParsPack CDN)
+docs: https://app.notion.com/p/3f828d2a9e9b817a8a0de5fbff2688e5   # 04 · Domains, DNS & CDN
+description: >-
+  Client apps fetch https://wp.api.mohiraweb.ir/api/sub/<id> through the
+  ParsPack CDN to nginx on the panel server, which proxies to the
+  remnawave-subscription-page container. The admin UI (pl.api) uses the same
+  path. If this breaks, users keep working but cannot update subscriptions.
+
+nodes:
+  - id: parspack-cdn
+    name: ParsPack CDN
+    kind: cdn
+    group: external
+    address: [pl.api.mohiraweb.ir, wp.api.mohiraweb.ir]
+    role: Panel UI and subscription page in front of 81.12.50.23
+    docs: https://app.notion.com/p/3f828d2a9e9b817a8a0de5fbff2688e5
+    checks:
+      - { id: tls-wp, collector: tls-expiry, host: wp.api.mohiraweb.ir }
+      - { id: tls-pl, collector: tls-expiry, host: pl.api.mohiraweb.ir }
+
+links:
+  - id: c4a
+    label: C4a
+    title: Users → ParsPack CDN (subscription)
+    from: users
+    to: parspack-cdn
+    plane: control
+    protocol: HTTPS
+    health: { collector: http-probe, from: probe, url: "https://wp.api.mohiraweb.ir/", expect: "2xx,3xx,4xx" }
+
+  - id: c4b
+    label: C4b
+    title: ParsPack CDN → panel nginx (origin)
+    from: parspack-cdn
+    to: panel
+    plane: control
+    protocol: "origin 81.12.50.23:443 (remnawave-nginx)"
+    health:
+      - { id: origin, collector: tcp-connect, from: probe, target: "81.12.50.23:443" }
+      - { id: origin-tls-pl, collector: tls-expiry, from: probe, host: pl.api.mohiraweb.ir, connect: 81.12.50.23 }
+      - { id: origin-tls-wp, collector: tls-expiry, from: probe, host: wp.api.mohiraweb.ir, connect: 81.12.50.23 }
+    notes: "2026-10-13: origin certificates expired (pl.api 2026-09-24, wp.api 2026-06-25), no renewal tooling (08 #2)."
+
+routes:
+  - id: subscription
+    title: Subscription updates
+    hops: [c4a, c4b]
+    users_estimate: 1828
+    impact: degraded
+
+alerts:
+  - id: tls-expiring
+    when: "collector.tls-expiry.status != ok"
+    severity: warning
+    title: TLS certificate expiring
+    message_fa: "گواهی TLS {name} کمتر از ۱۴ روز اعتبار دارد."
+    message_en: "TLS certificate {name} expires in less than 14 days."

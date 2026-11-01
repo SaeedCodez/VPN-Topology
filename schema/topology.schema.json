@@ -1,0 +1,2422 @@
+{
+  "$id": "https://vpnmap.local/schema/topology.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "check-check": {
+      "description": "Collector spec. Allowed collectors here: 3xui-inbound, boot-time, docker-container, e2e-probe, http-probe, local-check, log-match, remnawave-node, systemd-unit, tcp-connect, tls-expiry, wg-handshake, xbridger-connection",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "tcp-connect",
+              "description": "TCP connect: Opens a TCP connection to target and reports ok/refused/timeout and the connect time. Runs on the agent of `from` (configured locally in its agent.yaml), on the probe, or on the hub."
+            },
+            "from": {
+              "description": "Where the connect is made from: a node id with agent: true, \"probe\" or \"hub\". Default: probe.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often to try. Default: 15s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "target": {
+              "description": "host:port to connect to.",
+              "pattern": "^[A-Za-z0-9.-]+:[0-9]{1,5}$",
+              "type": "string"
+            },
+            "timeout": {
+              "description": "Connect timeout. Default: 3s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "http-probe",
+              "description": "HTTP probe: GET url and check the status code and latency. Slower than max_latency counts as failed; slower than slow counts as degraded."
+            },
+            "expect": {
+              "description": "Accepted status codes: \"200\", \"2xx\", \"2xx,401\". Default: 2xx,3xx.",
+              "type": "string"
+            },
+            "from": {
+              "description": "Where the request is made from. Default: hub.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often to request. Default: 30s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max_latency": {
+              "description": "Slower than this = failed. Default: 10s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "slow": {
+              "description": "Slower than this = degraded.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "url": {
+              "description": "URL to GET (read-only endpoints only).",
+              "pattern": "^https?://",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "tls-expiry",
+              "description": "TLS certificate expiry: Connects with TLS and reports the days until the leaf certificate expires. Below warn_days = degraded, expired = down."
+            },
+            "connect": {
+              "description": "Connect to this address instead of resolving host (to check an origin behind a CDN); host is still the SNI.",
+              "type": "string"
+            },
+            "from": {
+              "description": "Where the handshake is made from. Default: hub.",
+              "type": "string"
+            },
+            "host": {
+              "description": "Hostname (also used as SNI).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often to check. Default: 1h.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "port": {
+              "description": "TLS port. Default: 443.",
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "warn_days": {
+              "description": "Degraded below this many days. Default: 14.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "wg-handshake",
+              "description": "WireGuard handshake age: Age of the latest handshake of the interface's peer (the newest one if there are several). Older than max_age = failed."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interface": {
+              "description": "WireGuard interface name.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max_age": {
+              "description": "Handshake older than this = failed. Default: 3m.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "netns": {
+              "description": "Network namespace, if any.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "interface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "remnawave-node",
+              "description": "Remnawave node status: Reads GET /api/nodes from the Remnawave panel: isConnected, isNodeOnline, isXrayRunning, lastStatusMessage, xray uptime. Uses the dedicated monitoring API token from the hub's env."
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "node": {
+              "description": "Remnawave node name, e.g. Local-Node.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "node"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "check": {
+              "description": "Local check id that runs `xbridger doctor --json`. Default: xbridger-doctor.",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$",
+              "type": "string"
+            },
+            "collector": {
+              "const": "xbridger-connection",
+              "description": "XBridger connection: State of one XBridger connection from `xbridger doctor --json`, run by the read-only local check `check` on the XBridger node."
+            },
+            "connection": {
+              "description": "XBridger connection id, e.g. mt6snj5mlbnn.",
+              "type": "string"
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "connection",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "3xui-inbound",
+              "description": "3x-ui inbound: Reads the inbound list of a 3x-ui panel (POST login + GET panel/api/inbounds/list) with read-only use of the API; reports enable flag and up/down byte counters. Panel URL and credentials come from hub env vars."
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "inbound": {
+              "description": "Inbound remark or tag.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "panel": {
+              "description": "Name of the 3x-ui panel; the hub reads XUI_\u003cNAME\u003e_URL/USER/PASS env vars.",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "inbound",
+            "panel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "systemd-unit",
+              "description": "systemd unit: ActiveState/SubState of a unit (systemctl show, no privileges). active = ok, activating/reloading = degraded, failed/inactive = failed."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "description": "Unit name, e.g. realm.service.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "unit"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "docker-container",
+              "description": "Docker container: State, health and restart count of a container, read by the agent's root helper (only name, state, health, start time, restart count, image)."
+            },
+            "container": {
+              "description": "Container name.",
+              "type": "string"
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "require_healthy": {
+              "description": "Treat unhealthy as failed (otherwise degraded). Default: true.",
+              "type": "boolean"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "container",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "boot-time",
+              "description": "Boot time: Every node with agent: true gets this implicitly: a reboot inside `window` gives a reboot badge and a degraded check; each reboot is an event."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "window": {
+              "description": "How long after a boot the node counts as recently rebooted. Default: 30m.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "log-match",
+              "description": "Log line match: Watches new lines of a log file (redacted by the agent). mode event: each matching line becomes an event (e.g. watchdog restarts). mode freshness: the last matching line must be younger than max_age (e.g. backups)."
+            },
+            "event": {
+              "description": "event mode: event title, e.g. \"watchdog restarted remnawave\".",
+              "type": "string"
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max_age": {
+              "description": "freshness mode: last match must be younger than this.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "mode": {
+              "description": "event or freshness. Default: event.",
+              "enum": [
+                "event",
+                "freshness"
+              ],
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "description": "Absolute log file path.",
+              "pattern": "^/",
+              "type": "string"
+            },
+            "pattern": {
+              "description": "RE2 regular expression.",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "path",
+            "pattern"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "e2e-probe",
+              "description": "End-to-end probe: A real VPN client (sing-box, dedicated monitoring user) on the probe server fetches url through the route every interval and checks the exit country. `failures` consecutive failures = down; fewer = degraded."
+            },
+            "expect_country": {
+              "description": "Expected exit country (ISO code), e.g. FR.",
+              "pattern": "^[A-Z]{2}$",
+              "type": "string"
+            },
+            "failures": {
+              "description": "Consecutive failures before the route is down. Default: 3.",
+              "type": "integer"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "Probe interval. Default: 30s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "url": {
+              "description": "URL fetched through the route (expects 204). Default: http://cp.cloudflare.com/generate_204.",
+              "pattern": "^https?://",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "check": {
+              "description": "Check id (file name without .check).",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$",
+              "type": "string"
+            },
+            "collector": {
+              "const": "local-check",
+              "description": "Local check: Result of a read-only check script that already exists in /etc/vpnmap-agent/checks.d/\u003ccheck\u003e.check on that server (root-owned, JSON output). The hub cannot add or change checks; `vpnmap plan` prints the file and install command when one is missing."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often the agent runs it. Default: 30s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "check",
+            "host"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "check-conns": {
+      "description": "Collector spec. Allowed collectors here: ss-conns",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "ss-conns",
+              "description": "Established TCP connections: Counts ESTABLISHED TCP sockets on the host whose local port (side: local) or remote port (side: remote) is `port` (read from /proc/net/tcp, no privileges)."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "port": {
+              "description": "TCP port (or use ports).",
+              "type": "integer"
+            },
+            "ports": {
+              "description": "Several TCP ports; the counts are added up.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "side": {
+              "description": "local = we listen on port; remote = we dial port. Default: local.",
+              "enum": [
+                "local",
+                "remote"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "check-metric": {
+      "description": "Collector spec. Allowed collectors here: 3xui-inbound, boot-time, http-probe, local-check, nft-counter, remnawave-node, remnawave-online, ss-conns, tcp-connect, tls-expiry, wg-handshake, wg-transfer, xbridger-connection, xray-stats",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "tcp-connect",
+              "description": "TCP connect: Opens a TCP connection to target and reports ok/refused/timeout and the connect time. Runs on the agent of `from` (configured locally in its agent.yaml), on the probe, or on the hub."
+            },
+            "from": {
+              "description": "Where the connect is made from: a node id with agent: true, \"probe\" or \"hub\". Default: probe.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often to try. Default: 15s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "target": {
+              "description": "host:port to connect to.",
+              "pattern": "^[A-Za-z0-9.-]+:[0-9]{1,5}$",
+              "type": "string"
+            },
+            "timeout": {
+              "description": "Connect timeout. Default: 3s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "http-probe",
+              "description": "HTTP probe: GET url and check the status code and latency. Slower than max_latency counts as failed; slower than slow counts as degraded."
+            },
+            "expect": {
+              "description": "Accepted status codes: \"200\", \"2xx\", \"2xx,401\". Default: 2xx,3xx.",
+              "type": "string"
+            },
+            "from": {
+              "description": "Where the request is made from. Default: hub.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often to request. Default: 30s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max_latency": {
+              "description": "Slower than this = failed. Default: 10s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "slow": {
+              "description": "Slower than this = degraded.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "url": {
+              "description": "URL to GET (read-only endpoints only).",
+              "pattern": "^https?://",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "tls-expiry",
+              "description": "TLS certificate expiry: Connects with TLS and reports the days until the leaf certificate expires. Below warn_days = degraded, expired = down."
+            },
+            "connect": {
+              "description": "Connect to this address instead of resolving host (to check an origin behind a CDN); host is still the SNI.",
+              "type": "string"
+            },
+            "from": {
+              "description": "Where the handshake is made from. Default: hub.",
+              "type": "string"
+            },
+            "host": {
+              "description": "Hostname (also used as SNI).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often to check. Default: 1h.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "port": {
+              "description": "TLS port. Default: 443.",
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "warn_days": {
+              "description": "Degraded below this many days. Default: 14.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "nft-counter",
+              "description": "nftables counter: Byte counters in the agent's own counter-only table `inet vpnmap` (no accept/drop rules). `up` matches bytes flowing from the link's `from` node to its `to` node; `down` the reverse. `vpnmap agent nft \u003cnode\u003e` renders the rules."
+            },
+            "down": {
+              "additionalProperties": false,
+              "description": "Match for bytes to→from.",
+              "properties": {
+                "daddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "dport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                },
+                "hook": {
+                  "enum": [
+                    "input",
+                    "output",
+                    "forward"
+                  ],
+                  "type": "string"
+                },
+                "iif": {
+                  "type": "string"
+                },
+                "oif": {
+                  "type": "string"
+                },
+                "proto": {
+                  "enum": [
+                    "tcp",
+                    "udp"
+                  ],
+                  "type": "string"
+                },
+                "saddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "sport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                }
+              },
+              "required": [
+                "hook"
+              ],
+              "type": "object"
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "up": {
+              "additionalProperties": false,
+              "description": "Match for bytes from→to: {hook: input|output|forward, proto, saddr, daddr, sport, dport, iif, oif}.",
+              "properties": {
+                "daddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "dport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                },
+                "hook": {
+                  "enum": [
+                    "input",
+                    "output",
+                    "forward"
+                  ],
+                  "type": "string"
+                },
+                "iif": {
+                  "type": "string"
+                },
+                "oif": {
+                  "type": "string"
+                },
+                "proto": {
+                  "enum": [
+                    "tcp",
+                    "udp"
+                  ],
+                  "type": "string"
+                },
+                "saddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "sport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                }
+              },
+              "required": [
+                "hook"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "up"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "ss-conns",
+              "description": "Established TCP connections: Counts ESTABLISHED TCP sockets on the host whose local port (side: local) or remote port (side: remote) is `port` (read from /proc/net/tcp, no privileges)."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "port": {
+              "description": "TCP port (or use ports).",
+              "type": "integer"
+            },
+            "ports": {
+              "description": "Several TCP ports; the counts are added up.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "side": {
+              "description": "local = we listen on port; remote = we dial port. Default: local.",
+              "enum": [
+                "local",
+                "remote"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "wg-transfer",
+              "description": "WireGuard transfer: rx/tx bytes from `wg show \u003cinterface\u003e dump` (inside netns if set). Direction is inferred: if host is the link's `from` node, tx = up; if it is the `to` node, rx = up. Override with `up: rx|tx`."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interface": {
+              "description": "WireGuard interface name.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "netns": {
+              "description": "Network namespace, if the interface lives in one.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "up": {
+              "description": "Which counter is the from→to direction (normally inferred).",
+              "enum": [
+                "rx",
+                "tx"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "interface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "wg-handshake",
+              "description": "WireGuard handshake age: Age of the latest handshake of the interface's peer (the newest one if there are several). Older than max_age = failed."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interface": {
+              "description": "WireGuard interface name.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max_age": {
+              "description": "Handshake older than this = failed. Default: 3m.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "netns": {
+              "description": "Network namespace, if any.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "interface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "xray-stats",
+              "description": "Xray inbound/outbound traffic: Per-inbound or per-outbound Xray byte counters as recorded by the Remnawave panel (`remnawave_node_outbound_upload_bytes` / `..._download_bytes{node_uuid,tag}` on the panel's local 127.0.0.1:3001/metrics). The agent on the panel host scrapes that endpoint and forwards only these metrics. Data arrives in 30 s steps."
+            },
+            "host": {
+              "description": "Node whose agent scrapes the panel metrics (the panel server).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "inbound": {
+              "description": "Inbound tag, e.g. VLESS_XBRIDGER_MAIN (set outbound or inbound).",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "node": {
+              "description": "Remnawave node name, e.g. Local-Node.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "outbound": {
+              "description": "Outbound tag, e.g. proxy_MAIN or DIRECT.",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "node"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "remnawave-node",
+              "description": "Remnawave node status: Reads GET /api/nodes from the Remnawave panel: isConnected, isNodeOnline, isXrayRunning, lastStatusMessage, xray uptime. Uses the dedicated monitoring API token from the hub's env."
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "node": {
+              "description": "Remnawave node name, e.g. Local-Node.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "node"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "remnawave-online",
+              "description": "Remnawave online users: Online users from the Remnawave API: per node (usersOnline) or, without `node`, the panel-wide onlineNow."
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "node": {
+              "description": "Remnawave node name; omit for all users.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "check": {
+              "description": "Local check id that runs `xbridger doctor --json`. Default: xbridger-doctor.",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$",
+              "type": "string"
+            },
+            "collector": {
+              "const": "xbridger-connection",
+              "description": "XBridger connection: State of one XBridger connection from `xbridger doctor --json`, run by the read-only local check `check` on the XBridger node."
+            },
+            "connection": {
+              "description": "XBridger connection id, e.g. mt6snj5mlbnn.",
+              "type": "string"
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "connection",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "3xui-inbound",
+              "description": "3x-ui inbound: Reads the inbound list of a 3x-ui panel (POST login + GET panel/api/inbounds/list) with read-only use of the API; reports enable flag and up/down byte counters. Panel URL and credentials come from hub env vars."
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "inbound": {
+              "description": "Inbound remark or tag.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "panel": {
+              "description": "Name of the 3x-ui panel; the hub reads XUI_\u003cNAME\u003e_URL/USER/PASS env vars.",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "inbound",
+            "panel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "boot-time",
+              "description": "Boot time: Every node with agent: true gets this implicitly: a reboot inside `window` gives a reboot badge and a degraded check; each reboot is an event."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "window": {
+              "description": "How long after a boot the node counts as recently rebooted. Default: 30m.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "check": {
+              "description": "Check id (file name without .check).",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$",
+              "type": "string"
+            },
+            "collector": {
+              "const": "local-check",
+              "description": "Local check: Result of a read-only check script that already exists in /etc/vpnmap-agent/checks.d/\u003ccheck\u003e.check on that server (root-owned, JSON output). The hub cannot add or change checks; `vpnmap plan` prints the file and install command when one is missing."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often the agent runs it. Default: 30s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "check",
+            "host"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "check-probe": {
+      "description": "Collector spec. Allowed collectors here: e2e-probe",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "e2e-probe",
+              "description": "End-to-end probe: A real VPN client (sing-box, dedicated monitoring user) on the probe server fetches url through the route every interval and checks the exit country. `failures` consecutive failures = down; fewer = degraded."
+            },
+            "expect_country": {
+              "description": "Expected exit country (ISO code), e.g. FR.",
+              "pattern": "^[A-Z]{2}$",
+              "type": "string"
+            },
+            "failures": {
+              "description": "Consecutive failures before the route is down. Default: 3.",
+              "type": "integer"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "Probe interval. Default: 30s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "url": {
+              "description": "URL fetched through the route (expects 204). Default: http://cp.cloudflare.com/generate_204.",
+              "pattern": "^https?://",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "check-traffic": {
+      "description": "Collector spec. Allowed collectors here: 3xui-inbound, nft-counter, wg-transfer, xray-stats",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "nft-counter",
+              "description": "nftables counter: Byte counters in the agent's own counter-only table `inet vpnmap` (no accept/drop rules). `up` matches bytes flowing from the link's `from` node to its `to` node; `down` the reverse. `vpnmap agent nft \u003cnode\u003e` renders the rules."
+            },
+            "down": {
+              "additionalProperties": false,
+              "description": "Match for bytes to→from.",
+              "properties": {
+                "daddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "dport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                },
+                "hook": {
+                  "enum": [
+                    "input",
+                    "output",
+                    "forward"
+                  ],
+                  "type": "string"
+                },
+                "iif": {
+                  "type": "string"
+                },
+                "oif": {
+                  "type": "string"
+                },
+                "proto": {
+                  "enum": [
+                    "tcp",
+                    "udp"
+                  ],
+                  "type": "string"
+                },
+                "saddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "sport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                }
+              },
+              "required": [
+                "hook"
+              ],
+              "type": "object"
+            },
+            "fallback": {
+              "$ref": "#/definitions/check-traffic",
+              "description": "Used when the primary source has no data."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "up": {
+              "additionalProperties": false,
+              "description": "Match for bytes from→to: {hook: input|output|forward, proto, saddr, daddr, sport, dport, iif, oif}.",
+              "properties": {
+                "daddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "dport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                },
+                "hook": {
+                  "enum": [
+                    "input",
+                    "output",
+                    "forward"
+                  ],
+                  "type": "string"
+                },
+                "iif": {
+                  "type": "string"
+                },
+                "oif": {
+                  "type": "string"
+                },
+                "proto": {
+                  "enum": [
+                    "tcp",
+                    "udp"
+                  ],
+                  "type": "string"
+                },
+                "saddr": {
+                  "pattern": "^[0-9.]+(/[0-9]+)?$",
+                  "type": "string"
+                },
+                "sport": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "A port or a list of ports."
+                }
+              },
+              "required": [
+                "hook"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "up"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "wg-transfer",
+              "description": "WireGuard transfer: rx/tx bytes from `wg show \u003cinterface\u003e dump` (inside netns if set). Direction is inferred: if host is the link's `from` node, tx = up; if it is the `to` node, rx = up. Override with `up: rx|tx`."
+            },
+            "fallback": {
+              "$ref": "#/definitions/check-traffic",
+              "description": "Used when the primary source has no data."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interface": {
+              "description": "WireGuard interface name.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "netns": {
+              "description": "Network namespace, if the interface lives in one.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "up": {
+              "description": "Which counter is the from→to direction (normally inferred).",
+              "enum": [
+                "rx",
+                "tx"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "interface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "xray-stats",
+              "description": "Xray inbound/outbound traffic: Per-inbound or per-outbound Xray byte counters as recorded by the Remnawave panel (`remnawave_node_outbound_upload_bytes` / `..._download_bytes{node_uuid,tag}` on the panel's local 127.0.0.1:3001/metrics). The agent on the panel host scrapes that endpoint and forwards only these metrics. Data arrives in 30 s steps."
+            },
+            "fallback": {
+              "$ref": "#/definitions/check-traffic",
+              "description": "Used when the primary source has no data."
+            },
+            "host": {
+              "description": "Node whose agent scrapes the panel metrics (the panel server).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "inbound": {
+              "description": "Inbound tag, e.g. VLESS_XBRIDGER_MAIN (set outbound or inbound).",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "node": {
+              "description": "Remnawave node name, e.g. Local-Node.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "outbound": {
+              "description": "Outbound tag, e.g. proxy_MAIN or DIRECT.",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host",
+            "node"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "3xui-inbound",
+              "description": "3x-ui inbound: Reads the inbound list of a 3x-ui panel (POST login + GET panel/api/inbounds/list) with read-only use of the API; reports enable flag and up/down byte counters. Panel URL and credentials come from hub env vars."
+            },
+            "fallback": {
+              "$ref": "#/definitions/check-traffic",
+              "description": "Used when the primary source has no data."
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "inbound": {
+              "description": "Inbound remark or tag.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "panel": {
+              "description": "Name of the 3x-ui panel; the hub reads XUI_\u003cNAME\u003e_URL/USER/PASS env vars.",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "inbound",
+            "panel"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "check-users": {
+      "description": "Collector spec. Allowed collectors here: remnawave-online",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "remnawave-online",
+              "description": "Remnawave online users: Online users from the Remnawave API: per node (usersOnline) or, without `node`, the panel-wide onlineNow."
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "node": {
+              "description": "Remnawave node name; omit for all users.",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "description": "One VPN feature: its nodes, links, routes, checks, alerts and docs.",
+  "properties": {
+    "alerts": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "message_en": {
+            "type": "string"
+          },
+          "message_fa": {
+            "description": "Telegram message in Persian.",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "warning",
+              "info"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "when": {
+            "description": "Condition, e.g. \"link.wg-game.health == down for 2m\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "when",
+          "severity",
+          "message_fa"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "component": {
+      "description": "Lowercase id: letters, digits and dashes.",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "docs": {
+      "description": "https:// URL (Notion page or other docs).",
+      "pattern": "^https://",
+      "type": "string"
+    },
+    "links": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "conns": {
+            "$ref": "#/definitions/check-conns",
+            "description": "Connection count source."
+          },
+          "docs": {
+            "description": "https:// URL (Notion page or other docs).",
+            "pattern": "^https://",
+            "type": "string"
+          },
+          "from": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/check-check",
+                "description": "Health check."
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/check-check",
+                  "description": "Health check."
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "id": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "label": {
+            "description": "Short code shown on the edge, e.g. E3.",
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "plane": {
+            "enum": [
+              "data",
+              "control"
+            ],
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "runbook": {
+            "description": "Read-only diagnostic commands. Shown with a copy button; never executed.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "cmd": {
+                  "description": "Shell command (read-only: no restart/stop/rm/apply...).",
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "cmd"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "to": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "traffic": {
+            "$ref": "#/definitions/check-traffic",
+            "description": "Throughput source."
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to",
+          "plane"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "nodes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "agent": {
+            "description": "true when vpnmap-agent runs on this server.",
+            "type": "boolean"
+          },
+          "card": {
+            "description": "Up to 3 metric/check ids shown on the card (built-ins: cpu, mem, disk, load, uptime, net).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/definitions/check-check",
+              "description": "Node health check."
+            },
+            "type": "array"
+          },
+          "docs": {
+            "description": "https:// URL (Notion page or other docs).",
+            "pattern": "^https://",
+            "type": "string"
+          },
+          "facts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "group": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "users",
+              "relay",
+              "panel",
+              "vpn-node",
+              "bridge",
+              "exit",
+              "cdn",
+              "edge",
+              "vpn-provider",
+              "internet",
+              "router",
+              "server",
+              "storage",
+              "service"
+            ],
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/definitions/check-metric",
+              "description": "Extra numbers for the node card (needs id and label)."
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "runbook": {
+            "description": "Read-only diagnostic commands. Shown with a copy button; never executed.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "cmd": {
+                  "description": "Shell command (read-only: no restart/stop/rm/apply...).",
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "cmd"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "group"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "routes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "docs": {
+            "description": "https:// URL (Notion page or other docs).",
+            "pattern": "^https://",
+            "type": "string"
+          },
+          "hops": {
+            "description": "Link ids in order, from the users to the exit.",
+            "items": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "impact": {
+            "enum": [
+              "outage",
+              "degraded"
+            ],
+            "type": "string"
+          },
+          "probe": {
+            "$ref": "#/definitions/check-probe",
+            "description": "End-to-end probe of the route."
+          },
+          "squads": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "users": {
+            "$ref": "#/definitions/check-users",
+            "description": "Live user count on this route."
+          },
+          "users_estimate": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "hops"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "runbook": {
+      "description": "Read-only diagnostic commands. Shown with a copy button; never executed.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "cmd": {
+            "description": "Shell command (read-only: no restart/stop/rm/apply...).",
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "cmd"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "title"
+  ],
+  "title": "vpnmap component file (topology/components/*.yaml)",
+  "type": "object"
+}

@@ -1,0 +1,119 @@
+{
+  "$id": "https://vpnmap.local/schema/map.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "description": "Global settings, groups and observation sources of the VPN map.",
+  "properties": {
+    "docs": {
+      "description": "https:// URL (Notion page or other docs).",
+      "pattern": "^https://",
+      "type": "string"
+    },
+    "groups": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "datacenter",
+              "provider",
+              "external",
+              "personal"
+            ],
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "schema": {
+      "enum": [
+        "vpnmap/v1"
+      ],
+      "type": "string"
+    },
+    "settings": {
+      "additionalProperties": false,
+      "properties": {
+        "hub": {
+          "description": "Public hub URL, used in generated agent configs.",
+          "pattern": "^https?://",
+          "type": "string"
+        },
+        "reboot_window": {
+          "description": "Duration such as 15s, 3m, 2h, 14d.",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+          "type": "string"
+        },
+        "stale_after": {
+          "description": "Duration such as 15s, 3m, 2h, 14d.",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+          "type": "string"
+        },
+        "timezone": {
+          "description": "IANA zone for human output, e.g. Asia/Tehran.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "sources": {
+      "description": "Observers outside the servers (\"hub\" is implicit).",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Lowercase id: letters, digits and dashes.",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "groups"
+  ],
+  "title": "vpnmap map file (topology/map.yaml)",
+  "type": "object"
+}

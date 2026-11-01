@@ -1,0 +1,16 @@
+# build output
+/bin/
+dist/
+node_modules/
+.nuxt/
+.output/
+.data/
+*.log
+coverage/
+# local secrets / state (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+apps/hub/.pglite/
