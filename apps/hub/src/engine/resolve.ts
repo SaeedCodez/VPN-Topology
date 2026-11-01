@@ -350,7 +350,12 @@ export function traffic(c: CheckSpec, ctx: ResolveCtx, link: TopoLink | undefine
       if (!uuid) return null;
       const dir = c.params.outbound ? 'outbound' : 'inbound';
       const tag = c.params.outbound ?? c.params.inbound;
-      const k = (what: string) => `prom:${host}:${promKey(`remnawave_node_${dir}_${what}_bytes`, { node_uuid: uuid, tag })}`;
+      // Match by label subset: the panel adds labels of its own (e.g. app="remnawave").
+      const k = (what: string) => {
+        const name = `remnawave_node_${dir}_${what}_bytes`;
+        const s = a.push.prom?.find((p) => p.name === name && p.labels?.node_uuid === uuid && p.labels?.tag === tag);
+        return `prom:${host}:${promKey(name, s?.labels ?? { node_uuid: uuid, tag })}`;
+      };
       // The panel records node stats every 30 s: use a 90 s window.
       const up = ctx.s.rate(k('upload'), ctx.now, 90_000, 90_000);
       const down = ctx.s.rate(k('download'), ctx.now, 90_000, 90_000);
