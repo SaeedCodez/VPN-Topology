@@ -96,7 +96,7 @@ var Catalog = []CollectorInfo{
 	},
 	{
 		Name: "http-probe", Title: "HTTP probe", RunsOn: "from",
-		Produces: []string{"health", "latency_ms", "status_code"}, Usage: []string{UseCheck, UseMetric},
+		Produces: []string{"health", "latency_ms", "status_code"}, Usage: []string{UseCheck, UseMetric, UseProbe},
 		Doc: "GET url and check the status code and latency. Slower than max_latency counts as failed; slower than slow counts as degraded.",
 		Params: []Param{
 			{Name: "from", Type: PFrom, Default: "hub", Doc: "Where the request is made from."},
@@ -109,11 +109,10 @@ var Catalog = []CollectorInfo{
 		Example: "{ collector: http-probe, from: hub, url: https://pl.api.mohiraweb.ir/api/system/health, max_latency: 5s, expect: \"2xx,401\" }",
 	},
 	{
-		Name: "tls-expiry", Title: "TLS certificate expiry", RunsOn: "from",
+		Name: "tls-expiry", Title: "TLS certificate expiry", RunsOn: "hub",
 		Produces: []string{"health", "days_left"}, Usage: []string{UseCheck, UseMetric},
 		Doc: "Connects with TLS and reports the days until the leaf certificate expires. Below warn_days = degraded, expired = down.",
 		Params: []Param{
-			{Name: "from", Type: PFrom, Default: "hub", Doc: "Where the handshake is made from."},
 			{Name: "host", Type: PString, Required: true, Doc: "Hostname (also used as SNI)."},
 			{Name: "port", Type: PInt, Default: "443", Doc: "TLS port."},
 			{Name: "connect", Type: PString, Doc: "Connect to this address instead of resolving host (to check an origin behind a CDN); host is still the SNI."},

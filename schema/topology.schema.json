@@ -134,10 +134,6 @@
               "description": "Connect to this address instead of resolving host (to check an origin behind a CDN); host is still the SNI.",
               "type": "string"
             },
-            "from": {
-              "description": "Where the handshake is made from. Default: hub.",
-              "type": "string"
-            },
             "host": {
               "description": "Hostname (also used as SNI).",
               "type": "string"
@@ -867,10 +863,6 @@
               "description": "Connect to this address instead of resolving host (to check an origin behind a CDN); host is still the SNI.",
               "type": "string"
             },
-            "from": {
-              "description": "Where the handshake is made from. Default: hub.",
-              "type": "string"
-            },
             "host": {
               "description": "Hostname (also used as SNI).",
               "type": "string"
@@ -1576,8 +1568,71 @@
       ]
     },
     "check-probe": {
-      "description": "Collector spec. Allowed collectors here: e2e-probe",
+      "description": "Collector spec. Allowed collectors here: e2e-probe, http-probe",
       "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "http-probe",
+              "description": "HTTP probe: GET url and check the status code and latency. Slower than max_latency counts as failed; slower than slow counts as degraded."
+            },
+            "expect": {
+              "description": "Accepted status codes: \"200\", \"2xx\", \"2xx,401\". Default: 2xx,3xx.",
+              "type": "string"
+            },
+            "from": {
+              "description": "Where the request is made from. Default: hub.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interval": {
+              "description": "How often to request. Default: 30s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max_latency": {
+              "description": "Slower than this = failed. Default: 10s.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "slow": {
+              "description": "Slower than this = degraded.",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ms|s|m|h|d)$",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "url": {
+              "description": "URL to GET (read-only endpoints only).",
+              "pattern": "^https?://",
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "url"
+          ],
+          "type": "object"
+        },
         {
           "additionalProperties": false,
           "properties": {

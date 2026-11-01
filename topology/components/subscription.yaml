@@ -28,7 +28,7 @@ links:
     to: parspack-cdn
     plane: control
     protocol: HTTPS
-    health: { collector: http-probe, from: probe, url: "https://wp.api.mohiraweb.ir/", expect: "2xx,3xx,4xx" }
+    health: { collector: tcp-connect, from: probe, target: "wp.api.mohiraweb.ir:443" }
 
   - id: c4b
     label: C4b
@@ -39,8 +39,8 @@ links:
     protocol: "origin 81.12.50.23:443 (remnawave-nginx)"
     health:
       - { id: origin, collector: tcp-connect, from: probe, target: "81.12.50.23:443" }
-      - { id: origin-tls-pl, collector: tls-expiry, from: probe, host: pl.api.mohiraweb.ir, connect: 81.12.50.23 }
-      - { id: origin-tls-wp, collector: tls-expiry, from: probe, host: wp.api.mohiraweb.ir, connect: 81.12.50.23 }
+      - { id: origin-tls-pl, collector: tls-expiry, host: pl.api.mohiraweb.ir, connect: 81.12.50.23 }
+      - { id: origin-tls-wp, collector: tls-expiry, host: wp.api.mohiraweb.ir, connect: 81.12.50.23 }
     notes: "2026-10-13: origin certificates expired (pl.api 2026-09-24, wp.api 2026-06-25), no renewal tooling (08 #2)."
 
 routes:
@@ -49,11 +49,13 @@ routes:
     hops: [c4a, c4b]
     users_estimate: 1828
     impact: degraded
+    # End-to-end: a subscription URL through the CDN must not answer 5xx.
+    probe: { collector: http-probe, from: probe, url: "https://wp.api.mohiraweb.ir/", expect: "2xx,3xx,4xx", max_latency: 10s }
 
 alerts:
   - id: tls-expiring
     when: "collector.tls-expiry.status != ok"
     severity: warning
     title: TLS certificate expiring
-    message_fa: "گواهی TLS {name} کمتر از ۱۴ روز اعتبار دارد."
-    message_en: "TLS certificate {name} expires in less than 14 days."
+    message_fa: "گواهی TLS {name} منقضی شده یا کمتر از ۱۴ روز اعتبار دارد."
+    message_en: "TLS certificate {name} has expired or expires within 14 days."
