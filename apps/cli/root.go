@@ -40,10 +40,10 @@ Every command takes --json; read commands take --at <time> for time travel.`,
 	}
 	pf := root.PersistentFlags()
 	pf.BoolVar(&g.JSON, "json", false, "machine-readable JSON output")
-	pf.StringVar(&g.At, "at", "", "read the board at a past moment (RFC 3339, e.g. 2026-10-22T02:03Z, or -2h)")
-	pf.StringVar(&g.Hub, "hub", "", "hub URL (env VPNMAP_HUB, or `vpnmap login`)")
-	pf.StringVar(&g.Token, "token", "", "personal API token (env VPNMAP_TOKEN; prefer `vpnmap login`)")
-	pf.StringVar(&g.Dir, "dir", "", "repository root containing topology/ (default: search upwards from the current directory)")
+	pf.StringVar(&g.At, "at", "", "read the board at a past `time` (RFC 3339, e.g. 2026-10-22T02:03Z, or -2h)")
+	pf.StringVar(&g.Hub, "hub", "", "`URL` of the hub (env VPNMAP_HUB, or save it with vpnmap login)")
+	pf.StringVar(&g.Token, "token", "", "personal API `token` (env VPNMAP_TOKEN; prefer vpnmap login)")
+	pf.StringVar(&g.Dir, "dir", "", "repository root containing topology/ (default: search upwards from the current `directory`)")
 	pf.BoolVar(&g.NoColor, "no-color", false, "disable colors (also NO_COLOR env)")
 
 	root.AddGroup(&cobra.Group{ID: "see", Title: "See the board:"},

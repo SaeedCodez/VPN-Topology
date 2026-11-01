@@ -24,8 +24,9 @@ var idVectors = []struct {
 		"node-" + strings.Repeat("x", 58),
 		"n_" + strings.Repeat("x", 58) + "_up",
 		"n_" + strings.Repeat("x", 56) + "_down",
-		"node-" + strings.Repeat("x", 58),
-		"node-" + strings.Repeat("x", 58)},
+		// SS ids keep the port when truncated, so ports never collide.
+		"node-" + strings.Repeat("x", 53) + "-2053",
+		"node-" + strings.Repeat("x", 54) + "-443"},
 	{"--Leading:trail--", "leading-trail", "-_trail__up", "-_trail__down", "leading-trail-2053", "leading-trail-443"},
 	{"route:main:probe", "route-main-probe", "r_main_probe_up", "r_main_probe_down", "route-main-probe-2053", "route-main-probe-443"},
 	{"node:x:\u0130Ka", "node-x-i-ka", "n_x_i_ka_up", "n_x_i_ka_down", "node-x-i-ka-2053", "node-x-i-ka-443"},

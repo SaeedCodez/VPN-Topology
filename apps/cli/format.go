@@ -223,3 +223,14 @@ func headerTime(at string, live bool) string {
 	}
 	return s
 }
+
+// line prints s without trailing blanks.
+func line(s string) { fmt.Println(strings.TrimRight(s, " ")) }
+
+// usersWord renders "1 user" / "≈1,742 users".
+func usersWord(text string, n float64) string {
+	if n == 1 {
+		return text + " user"
+	}
+	return text + " users"
+}

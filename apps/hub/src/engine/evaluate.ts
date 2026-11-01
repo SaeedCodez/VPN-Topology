@@ -388,6 +388,8 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
     // A control link out of a failing node is a consequence of that node.
     if (nodes[l.from]?.status === 'down') continue;
     if (nodes[l.to]?.status === 'down') continue;
+    // ...and so is a link into a server that went silent or is already part of an incident.
+    if (agentSilent(l.to) || nodes[l.to]?.impact) continue;
     extraRoots.push({ kind: 'link', id: l.id });
   }
   for (const r of extraRoots) {
@@ -443,7 +445,7 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
     for (const l of aff.links) {
       for (const c of links[l].checks.filter((c) => c.effective === 'down')) evidence.push(`link ${l} · ${c.title}: ${c.detail}`);
     }
-    if (kind === 'node' && nodes[id].rebootedRecently) evidence.push(`node ${id} rebooted at ${nodes[id].bootTime}`);
+    if (kind === 'node' && nodes[id].rebootedRecently && nodes[id].uptimeSec !== null) evidence.push(`node ${id} rebooted ${fmtAge(nodes[id].uptimeSec!)} ago`);
     const runbook: RootCause['runbook'] = [];
     const addRb = (from: string, list?: RunbookCmd[]) => list?.forEach((x) => runbook.push({ ...x, from }));
     if (kind === 'node') addRb(id, g.nodes.get(id)?.runbook);

@@ -78,8 +78,8 @@ func printRootCauses(rcs []rootCause) {
 		if rc.Impact == "degraded" {
 			impact = " (degraded service)"
 		}
-		fmt.Printf("%s %s (%s %s): %s, %s users affected%s (since %s)\n",
-			red("Probable root cause:"), bold(scrub(rc.Title)), rc.Kind, rc.ElementID, scrub(rc.Summary), users, impact, sinceText(rc.Since))
+		fmt.Printf("%s %s (%s %s): %s, %s affected%s (since %s)\n",
+			red("Probable root cause:"), bold(scrub(rc.Title)), rc.Kind, rc.ElementID, scrub(rc.Summary), usersWord(users, rc.UsersAffected), impact, sinceText(rc.Since))
 	}
 }
 
@@ -306,6 +306,9 @@ func getComponents() *cobra.Command {
 	return &cobra.Command{
 		Use: "components", Aliases: []string{"component", "comp"}, Short: "Components (topology files) and what they define", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if g.At != "" {
+				return failf("--at is not available for components: the hub lists the active topology (see `vpnmap history`)")
+			}
 			c, err := newClient()
 			if err != nil {
 				return err
@@ -459,7 +462,7 @@ func printDescribe(d *describeResp) error {
 		kv("Status", statusText(st.Status)+" since "+sinceText(st.Since))
 		fmt.Println(bold("\nHop by hop"))
 		for _, h := range st.Hops {
-			fmt.Printf("  %s %s %s %s\n", statusText(h.Status), dim(h.Kind), h.ID, impactText(h.Impact))
+			line(fmt.Sprintf("  %s %s %s %s", statusText(h.Status), dim(h.Kind), h.ID, impactText(h.Impact)))
 		}
 	default:
 		return failf("unexpected kind %q from the hub", d.Kind)
@@ -483,8 +486,8 @@ func printDescribe(d *describeResp) error {
 	if len(d.Events) > 0 {
 		fmt.Println(bold("\nRecent events"))
 		t := newTable("TIME (IRST)", "KIND", "SEVERITY", "TITLE")
-		for i := len(d.Events) - 1; i >= 0; i-- { // oldest first, like `vpnmap events`
-			e := d.Events[i]
+		sortEvents(d.Events) // oldest first, like `vpnmap events`
+		for _, e := range d.Events {
 			t.add(eventTime(e.TS), e.Kind, severityText(e.Severity), truncate(scrub(e.Title), 100))
 		}
 		printIndented(t, "  ")
@@ -628,7 +631,7 @@ into the past: vpnmap events --since 2h --at 2026-10-13T12:00Z.`,
 				fmt.Printf("No events in the last %s.\n", since)
 				return nil
 			}
-			sort.SliceStable(evs, func(i, j int) bool { return evs[i].TS < evs[j].TS })
+			sortEvents(evs)
 			t := newTable("TIME (IRST)", "KIND", "SEVERITY", "TITLE", "DETAIL")
 			for _, e := range evs {
 				t.add(eventTime(e.TS), e.Kind, severityText(e.Severity), truncate(scrub(e.Title), 90), truncate(scrub(e.Detail), 70))
@@ -825,4 +828,14 @@ func sortedMapKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// sortEvents orders events oldest first (by time, then id).
+func sortEvents(evs []hubEvent) {
+	sort.SliceStable(evs, func(i, j int) bool {
+		if evs[i].TS != evs[j].TS {
+			return evs[i].TS < evs[j].TS
+		}
+		return evs[i].ID < evs[j].ID
+	})
 }

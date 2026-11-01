@@ -161,6 +161,13 @@ func (c *Check) UnmarshalYAML(n *yaml.Node) error {
 			c.Params[k] = val
 		}
 	}
+	// For systemd-unit, `unit:` names the unit (a parameter), not the metric unit.
+	if c.Collector == "systemd-unit" && c.Unit != "" {
+		if _, ok := c.Params["unit"]; !ok {
+			c.Params["unit"] = c.Unit
+		}
+		c.Unit = ""
+	}
 	return nil
 }
 

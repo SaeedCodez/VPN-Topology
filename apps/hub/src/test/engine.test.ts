@@ -52,6 +52,9 @@ test('ids match the Go implementation (pkg/topology/ids.go)', () => {
   assert.equal(slug('link:e3:traffic-fallback'), 'link-e3-traffic-fallback');
   assert.equal(nftName('link:e3:traffic-fallback', 'up'), 'l_e3_traffic_fallback_up');
   assert.equal(ssId('link:e1:conns', 2053), 'link-e1-conns-2053');
+  const long = 'node:' + 'x'.repeat(80) + ':check-id';
+  assert.equal(ssId(long, 2053), 'node-' + 'x'.repeat(53) + '-2053');
+  assert.equal(ssId(long, 443), 'node-' + 'x'.repeat(54) + '-443');
 });
 
 test('steady state: only the known dead US tunnel is a root cause', () => {

@@ -295,6 +295,9 @@ func getAgents(use string, aliases ...string) *cobra.Command {
 	return &cobra.Command{
 		Use: use, Aliases: aliases, Short: "Agents: version, last push, config sha and whether it matches the generated config", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if g.At != "" {
+				return failf("--at is not available for agents: the hub only keeps each agent's latest push")
+			}
 			c, err := newClient()
 			if err != nil {
 				return err

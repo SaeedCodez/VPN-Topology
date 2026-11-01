@@ -82,7 +82,9 @@ func NftName(key, dir string) string {
 
 // SSID is the ss-conns id of one port: "link:e1:conns", 2053 → "link-e1-conns-2053".
 func SSID(key string, port int) string {
-	return sliceUTF16(Slug(key)+"-"+strconv.Itoa(port), 63)
+	// Truncate the key part, never the port, so different ports never collide.
+	ps := "-" + strconv.Itoa(port)
+	return sliceUTF16(Slug(key), 63-len(ps)) + ps
 }
 
 // HTTPID is the id of an http-probe run by an agent or the probe.

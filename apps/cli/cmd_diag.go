@@ -42,7 +42,7 @@ Exit code: 0 ok, 1 degraded or unknown, 2 down.`,
 				if src != "live" {
 					users = "≈" + users
 				}
-				kv("Impact", fmt.Sprintf("%s · %s users affected (%s)", rc.Impact, users, src))
+				kv("Impact", fmt.Sprintf("%s · %s affected (%s)", rc.Impact, usersWord(users, rc.UsersAffected), src))
 				kv("Since", sinceText(rc.Since))
 				kv("Routes", strings.Join(rc.Routes, ", "))
 				if rc.DefinedIn != nil {
@@ -87,9 +87,8 @@ Exit code: 0 ok, 1 degraded or unknown, 2 down.`,
 			if len(d.RecentEvents) > 0 {
 				fmt.Println(bold("\nRecent events (2 h)"))
 				t := newTable("TIME (IRST)", "KIND", "SEVERITY", "TITLE")
-				evs := d.RecentEvents
-				for i := len(evs) - 1; i >= 0; i-- { // oldest first
-					e := evs[i]
+				sortEvents(d.RecentEvents)
+				for _, e := range d.RecentEvents {
 					t.add(eventTime(e.TS), e.Kind, severityText(e.Severity), truncate(scrub(e.Title), 100))
 				}
 				printIndented(t, "  ")
@@ -133,21 +132,25 @@ Example: vpnmap path users france-exit`,
 				via = "via route " + bold(p.Route)
 			}
 			fmt.Printf("%s %s → %s %s · %s\n", bold("Path"), p.From, p.To, via, headerTime(p.At, g.At == ""))
-			for _, h := range p.Hops {
+			for i, h := range p.Hops {
+				bar := "│"
+				if i == len(p.Hops)-1 {
+					bar = " "
+				}
 				if h.Kind == "node" {
-					fmt.Printf("%s %s %s %s\n", statusDotOnly(h.Status), bold(h.ID), dim(scrub(h.Name)), impactText(h.Impact))
+					line(fmt.Sprintf("%s %s %s %s", statusDotOnly(h.Status), bold(h.ID), dim(scrub(h.Name)), impactText(h.Impact)))
 					if h.Metrics != "" {
-						fmt.Printf("│   %s\n", scrub(h.Metrics))
+						line(bar + "   " + scrub(h.Metrics))
 					}
 					if h.Detail != "" {
-						fmt.Printf("│   %s\n", dim(truncate(scrub(h.Detail), 120)))
+						line(bar + "   " + dim(truncate(scrub(h.Detail), 120)))
 					}
 					continue
 				}
-				fmt.Printf("│ %s %s %s %s\n", statusDotOnly(h.Status), h.ID, dim(scrub(h.Name)), impactText(h.Impact))
-				fmt.Printf("│     %s\n", scrub(h.Metrics))
+				line(fmt.Sprintf("│ %s %s %s %s", statusDotOnly(h.Status), h.ID, dim(scrub(h.Name)), impactText(h.Impact)))
+				line("│     " + scrub(h.Metrics))
 				if h.Detail != "" {
-					fmt.Printf("│     %s\n", dim(truncate(scrub(h.Detail), 120)))
+					line("│     " + dim(truncate(scrub(h.Detail), 120)))
 				}
 			}
 			fmt.Printf("\n%s %s %s\n", bold("Verdict:"), statusText(p.Status), scrub(p.Verdict))
@@ -183,7 +186,7 @@ func cmdWhy() *cobra.Command {
 			if g.JSON {
 				return printJSON(map[string]any{"id": d.ID, "kind": d.Kind, "at": d.At, "status": st.Status, "impact": st.Impact, "reasons": scrubAll(d.Why)})
 			}
-			fmt.Printf("%s %s %s %s\n", dim(strings.ToUpper(d.Kind)), bold(d.ID), statusText(st.Status), impactText(st.Impact))
+			line(fmt.Sprintf("%s %s %s %s", dim(strings.ToUpper(d.Kind)), bold(d.ID), statusText(st.Status), impactText(st.Impact)))
 			for _, w := range d.Why {
 				fmt.Println("  • " + scrub(w))
 			}

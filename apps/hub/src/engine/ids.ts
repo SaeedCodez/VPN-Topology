@@ -21,7 +21,9 @@ export function nftName(key: string, dir: 'up' | 'down'): string {
 
 /** ss id per port: "link:e1:conns", 2053 → "link-e1-conns-2053" */
 export function ssId(key: string, port: number): string {
-  return `${slug(key)}-${port}`.slice(0, 63);
+  // Truncate the key part, never the port, so different ports never collide.
+  const ps = `-${port}`;
+  return slug(key).slice(0, 63 - ps.length) + ps;
 }
 
 /** http / log ids */

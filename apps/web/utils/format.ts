@@ -19,7 +19,10 @@ export function fmtAge(sec: number | null | undefined): string {
   if (sec === null || sec === undefined) return '–'
   if (sec < 90) return `${Math.round(sec)}s`
   if (sec < 5400) return `${Math.round(sec / 60)}m`
-  if (sec < 172800) return `${Math.floor(sec / 3600)}h ${String(Math.round((sec % 3600) / 60)).padStart(2, '0')}m`
+  if (sec < 172800) {
+    const m = Math.round(sec / 60)
+    return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
+  }
   return `${Math.round(sec / 86400)}d`
 }
 

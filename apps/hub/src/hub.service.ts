@@ -164,6 +164,10 @@ export class HubService {
 
   async tick(now: number) {
     if (this.sim) this.sim.step(now, this.store, (p, t) => this.ingest(p, t));
+    // Forget agents that are not in the topology and stopped reporting (e.g. after a rollback).
+    for (const [node, a] of this.store.agents) {
+      if (now - a.lastSeen > 600_000 && node !== 'probe' && !this.bundle.nodes.some((n) => n.id === node)) this.store.agents.delete(node);
+    }
     const obs = observe(this.bundle, this.store, now);
     const draft = buildSnapshot(this.bundle, obs, { mode: this.cfg.mode, live: true, version: this.version, since: this.since, incidentSince: this.incidentSince, alerts: this.activeAlerts });
     const { active, transitions } = this.alerts.evaluate(this.bundle, draft, now, (l, at) => this.baseline(l, at));
@@ -352,7 +356,8 @@ export class HubService {
     const topo = await this.db.topologyAt(new Date(at));
     const bundle = topo?.bundle ?? this.bundle;
     const series = await this.tsdb.instant(at, 30_000);
-    const details = await this.db.checkDetailsAt(new Date(at));
+    // A stored sample covers its 10 s slot; read details up to the end of that slot.
+    const details = await this.db.checkDetailsAt(new Date(Math.floor(at / STEP_MS) * STEP_MS + STEP_MS));
     const obs = fromSeries(bundle, at, series, details);
     const alertEvents = await this.db.alertsActiveAt(new Date(at));
     const alerts: ActiveAlert[] = alertEvents.map((e) => {

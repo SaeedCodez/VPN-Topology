@@ -29,7 +29,7 @@ also available as CLI output (`--json`) for an agent.
 | 1 | Hub: ingest, collector resolvers, evaluation, root cause + blast radius, alert rules, events, time travel, REST + WebSocket, auth (password + TOTP, CLI tokens, per-agent tokens) | done |
 | 1 | Demo mode: simulator that replays the real incidents through the production code path | done |
 | 1 | Board: canvas, node cards, traffic edges, group frames, side panel, timeline + replay slider, light/dark | done |
-| 1 | CLI: status, get, describe, diagnose, path, why, events, metrics, snapshot, plan, apply, history, rollback, agent config/nft/token/install-cmd, docs | see `vpnmap --help` |
+| 1 | CLI: status, get, describe, diagnose, path, why, events, metrics, snapshot, plan, apply, history, rollback, layout pull, docs, agent config/nft/token/install-cmd, silence, login, admin hash-password/totp | done |
 | 1 | Agent: unprivileged collector + root helper with fixed read-only ops, counter-only nft table, install/uninstall, probe mode | done, not yet run on a real server |
 | 1 | Live collectors in the hub: Remnawave API, 3x-ui, HTTP/TCP/TLS probes | written, untested against the real APIs |
 | 2 | Telegram delivery (Persian), dedupe, recovery, maintenance mute, external heartbeat; `vpnmap discover`; MCP server | next (alert rules are already evaluated and shown) |

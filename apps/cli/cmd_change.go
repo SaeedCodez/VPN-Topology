@@ -61,6 +61,7 @@ type agentReq struct {
 	Address       string              `json:"address"`
 	Reporting     bool                `json:"reporting"`
 	Version       string              `json:"version,omitempty"`
+	Stale         bool                `json:"stale"`
 	LastSeen      string              `json:"last_seen,omitempty"`
 	ReportedSHA   string              `json:"reported_config_sha,omitempty"`
 	GeneratedSHA  string              `json:"generated_config_sha,omitempty"`
@@ -150,6 +151,7 @@ func agentRequirements(b, liveB *topology.Bundle, host string, byNode map[string
 		r.Commands = append(r.Commands, "vpnmap agent install-cmd "+host)
 	} else {
 		r.Version, r.LastSeen, r.ReportedSHA = a.Version, a.LastSeen, a.ConfigSha
+		r.Stale = a.AgeSec > 120
 		r.ConfigCurrent = a.ConfigSha == sha
 		r.Missing = missingCapabilities(cfg, a.Capabilities)
 		if !r.ConfigCurrent {
@@ -284,6 +286,9 @@ func printPlan(p *planResult, b *topology.Bundle) {
 		if r.ConfigError != "" {
 			fmt.Println("    " + red("✗ cannot generate its agent config: ") + r.ConfigError)
 			continue
+		}
+		if r.Stale {
+			fmt.Printf("    %s the agent last pushed %s: check vpnmap-agent on the server (systemctl status vpnmap-agent)\n", red("✗"), ago(r.LastSeen))
 		}
 		switch {
 		case !r.Reporting:
@@ -513,7 +518,7 @@ After applying, regenerate Notion page 01 with ` + "`vpnmap docs`" + `.`,
 				fmt.Printf("%s topology v%d is active on %s (hash %s).\n", green("✓"), resp.Version, c.base, b.Hash)
 			}
 			fmt.Println("Next:")
-			fmt.Println("  • run the agent and server commands above, if any (" + planNote[:len(planNote)-1] + ")")
+			fmt.Println("  • apply changed only the hub: run the agent and server commands listed above yourself, if any")
 			fmt.Println("  • regenerate the architecture page: vpnmap docs -o /tmp/notion-01.md, and update Notion page 01 with it (Notion rule 7)")
 			return nil
 		},

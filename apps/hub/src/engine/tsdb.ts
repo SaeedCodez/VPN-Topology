@@ -183,7 +183,7 @@ export function toSeries(obs: Observations): Map<string, number | null> {
 }
 
 /** Rebuild observations at `at` from stored series. Details come from events. */
-export function fromSeries(b: Bundle, at: number, s: Map<string, number>, details: Map<string, string>): Observations {
+export function fromSeries(b: Bundle, at: number, s: Map<string, number>, details: Map<string, { detail: string; status: string }>): Observations {
   const obs: Observations = { at, checks: {}, nodes: {}, links: {}, routes: {}, metrics: {} };
   const val = (k: string) => (s.has(k) ? s.get(k)! : null);
   const keys: string[] = [];
@@ -223,7 +223,10 @@ export function fromSeries(b: Bundle, at: number, s: Map<string, number>, detail
   for (const k of keys) {
     const code = val(`c:${k}:s`);
     const status = code === null ? 'unknown' : CODE_STATUS[String(code)] ?? 'unknown';
-    obs.checks[k] = { status, value: val(`c:${k}:v`), detail: details.get(k) ?? (code === null ? 'no data' : status), observedAt: code === null ? null : at, source: 'history' };
+    // Use the recorded detail only when it describes the same status.
+    const d = details.get(k);
+    const detail = d && d.status === status ? d.detail : code === null ? 'no data' : status;
+    obs.checks[k] = { status, value: val(`c:${k}:v`), detail, observedAt: code === null ? null : at, source: 'history' };
   }
   return obs;
 }

@@ -125,14 +125,14 @@ export class Db {
   }
 
   /** Last detail text of every check at or before `at` (for time travel). */
-  async checkDetailsAt(at: Date): Promise<Map<string, string>> {
+  async checkDetailsAt(at: Date): Promise<Map<string, { detail: string; status: string }>> {
     const res = await this.db.execute(sql`
       SELECT DISTINCT ON (entity_id) entity_id, data
       FROM events WHERE kind = 'state' AND entity_kind = 'check' AND ts <= ${at}
       ORDER BY entity_id, ts DESC, id DESC`);
     const rows = (res.rows ?? res) as any[];
-    const m = new Map<string, string>();
-    for (const r of rows) if (r.data?.detail) m.set(r.entity_id, r.data.detail);
+    const m = new Map<string, { detail: string; status: string }>();
+    for (const r of rows) if (r.data?.detail) m.set(r.entity_id, { detail: r.data.detail, status: r.data.status });
     return m;
   }
 

@@ -80,6 +80,8 @@ export function describe(b: Bundle, snap: Snapshot, id: string, events: HubEvent
   const comp = b.components.find((c) => c.name === spec.defined_in.component);
   for (const r of comp?.runbook ?? []) runbook.push({ ...r, from: comp!.name });
   const docs = [...new Set([(spec as any).docs, comp?.docs].filter(Boolean))] as string[];
+  const seenCmd = new Set<string>();
+  const uniqueRunbook = runbook.filter((r) => (seenCmd.has(r.cmd) ? false : (seenCmd.add(r.cmd), true)));
   return {
     kind,
     id: spec.id,
@@ -91,7 +93,7 @@ export function describe(b: Bundle, snap: Snapshot, id: string, events: HubEvent
     downstream,
     routes,
     events,
-    runbook,
+    runbook: uniqueRunbook,
     docs,
     why: why(b, snap, spec.id),
   };

@@ -134,6 +134,9 @@ func hubError(code int, raw []byte, method, path string) error {
 	case http.StatusNotFound:
 		return failf("%s", msg)
 	}
+	if code == http.StatusBadRequest {
+		return failf("the hub rejected the request: %s", msg)
+	}
 	return failf("hub error %d on %s %s: %s", code, method, path, msg)
 }
 

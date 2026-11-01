@@ -216,7 +216,7 @@ func (d *BundleDiff) fieldChange(kind, id, file string, line int, oe, ne map[str
 	if len(fields) == 0 {
 		return
 	}
-	d.Changes = append(d.Changes, Change{Op: "change", Kind: kind, ID: id, Title: entityTitle(ne), File: file, Line: line, Fields: fields})
+	d.Changes = append(d.Changes, Change{Op: "change", Kind: kind, ID: id, Title: entityTitle(kind, ne), File: file, Line: line, Fields: fields})
 }
 
 func newChange(op, kind, id string, e map[string]any) Change {
@@ -224,7 +224,7 @@ func newChange(op, kind, id string, e map[string]any) Change {
 	if kind == "component" {
 		file = jstr(e["file"])
 	}
-	return Change{Op: op, Kind: kind, ID: id, Title: entityTitle(e), File: file, Line: line}
+	return Change{Op: op, Kind: kind, ID: id, Title: entityTitle(kind, e), File: file, Line: line}
 }
 
 // Sort orders the changes by kind, then id (Diff output is already sorted).
@@ -411,8 +411,12 @@ func definedAt(e map[string]any) (string, int) {
 	return jstr(d["file"]), jnum(d["line"])
 }
 
-func entityTitle(e map[string]any) string {
-	for _, k := range []string{"name", "title", "label"} {
+func entityTitle(kind string, e map[string]any) string {
+	keys := []string{"name", "title", "label"}
+	if kind == "component" { // its name is the id
+		keys = []string{"title"}
+	}
+	for _, k := range keys {
 		if s := jstr(e[k]); s != "" {
 			return s
 		}
