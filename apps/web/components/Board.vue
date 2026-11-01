@@ -129,6 +129,16 @@ function onPaneClick() {
   if (panel.value === 'details') panel.value = null
 }
 
+// Keyboard: Tab moves between nodes (Vue Flow makes them focusable), Enter opens details.
+function onKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter') return
+  const el = (e.target as HTMLElement).closest('.vue-flow__node, .vue-flow__edge') as HTMLElement | null
+  const id = el?.dataset.id
+  if (!id || id.startsWith('frame:')) return
+  selected.value = { kind: el!.classList.contains('vue-flow__edge') ? 'link' : 'node', id }
+  panel.value = 'details'
+}
+
 async function relayout() {
   await resetLayout()
   await nextTick()
@@ -166,6 +176,8 @@ watch(selected, (s) => {
     :select-nodes-on-drag="false"
     :zoom-on-double-click="false"
     class="h-full w-full"
+    aria-label="VPN topology map: Tab to move between servers, Enter for details"
+    @keydown="onKeydown"
     @node-drag="onDrag"
     @node-drag-stop="onDragStop"
     @node-click="onNodeClick"

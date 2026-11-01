@@ -80,7 +80,9 @@ const problem = computed(() => st.value?.checks.find((c) => c.effective === 'dow
       :stroke-dasharray="spec.plane === 'control' ? '6 6' : undefined"
       stroke-linecap="round"
     />
-    <circle v-for="(d, i) in dots" :key="i" r="2.6" :fill="color" fill-opacity="0.95">
+    <!-- Hidden until its motion starts, otherwise it would sit at the canvas origin. -->
+    <circle v-for="(d, i) in dots" :key="`${i}-${d.dur}`" r="2.6" :fill="color" fill-opacity="0.95" opacity="0">
+      <set attributeName="opacity" to="1" :begin="d.begin" />
       <animateMotion :dur="d.dur" :begin="d.begin" repeatCount="indefinite" :path="geom.path" rotate="auto" />
     </circle>
   </g>
