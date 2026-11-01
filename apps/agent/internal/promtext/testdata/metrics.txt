@@ -1,0 +1,17 @@
+# HELP nodejs_heap_size_used_bytes Process heap size used from Node.js in bytes.
+# TYPE nodejs_heap_size_used_bytes gauge
+nodejs_heap_size_used_bytes 52428800
+# HELP remnawave_users_online Users online
+# TYPE remnawave_users_online gauge
+remnawave_users_online 137
+remnawave_users_total{status="active"} 1200
+remnawave_users_total{status="disabled"} 45
+remnawave_users_total{status="limited", note="a \"quoted\" \\ value\nnext"} 3
+# TYPE remnawave_node_traffic_bytes_total counter
+remnawave_node_traffic_bytes_total{node="relay-1",direction="rx"} 1.234e+12 1767225600000
+remnawave_node_traffic_bytes_total{node="relay-1",direction="tx"} 9.87e+11
+http_request_duration_seconds_bucket{le="0.1"} 10
+http_request_duration_seconds_bucket{le="+Inf"} 12
+remnawave_sync_lag_seconds NaN
+remnawave_last_error_ratio +Inf
+process_cpu_seconds_total 12.5

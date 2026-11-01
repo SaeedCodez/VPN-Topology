@@ -1,0 +1,85 @@
+#!/bin/bash
+# vpnmap local check: xbridger doctor (read-only)
+#
+# Runs `xbridger doctor --json` inside the backend container and maps it to
+# the vpnmap check contract on stdout:
+#   {"status":"ok|degraded|down","value":<connections>,"detail":"...","data":{"connections":[...]}}
+# xbridger doctor exit codes: 0 healthy, 1 degraded, 2 down. The connection
+# list goes into data.connections, where the hub reads the status of
+# connection mt6snj5mlbnn.
+#
+# Install (as root), then list it in agent.yaml (`vpnmap agent config` does):
+#   install -o root -g root -m 0755 xbridger-doctor.check /etc/vpnmap-agent/checks.d/
+#   checks: [{id: xbridger-doctor, interval: 30s, timeout: 15s}]
+#
+# The helper runs it as root with only PATH and LANG=C set, stdin=/dev/null,
+# a timeout, a 64 KiB output limit, and redacts the output again.
+# Uses python3 or jq to reshape the output when available, else falls back
+# to a plain mapping of the exit code.
+set -u
+
+CONTAINER=backend-app-1
+TIMEOUT=12
+
+json_str() { # print $1 as a JSON string
+	local s=$1
+	s=${s//\\/\\\\}
+	s=${s//\"/\\\"}
+	s=${s//$'\t'/\\t}
+	s=${s//$'\r'/\\r}
+	s=${s//$'\n'/\\n}
+	printf '"%s"' "$(printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037')"
+}
+
+reason=""
+out=$(timeout "$TIMEOUT" docker exec "$CONTAINER" xbridger doctor --json 2>/dev/null)
+rc=$?
+case $rc in
+0) status=ok ;;
+1) status=degraded ;;
+2) status=down ;;
+124) status=down reason="xbridger doctor timed out after ${TIMEOUT}s" ;;
+125 | 126 | 127) status=down reason="cannot run xbridger doctor in $CONTAINER (docker exit $rc)" ;;
+*) status=down reason="xbridger doctor exited $rc" ;;
+esac
+
+if command -v python3 >/dev/null 2>&1; then
+	STATUS=$status REASON=$reason RC=$rc python3 -I -c '
+import json, os, sys
+raw = sys.stdin.read()
+status, detail, rc = os.environ["STATUS"], os.environ["REASON"], int(os.environ["RC"])
+try:
+    doc = json.loads(raw) if raw.strip() else None
+except ValueError:
+    doc = None
+    detail = detail or "xbridger doctor output is not JSON"
+conns = None
+if isinstance(doc, dict):
+    conns = doc.get("connections")
+    for k in ("summary", "message"):
+        if not detail and isinstance(doc.get(k), str):
+            detail = doc[k]
+elif isinstance(doc, list):
+    conns = doc
+out = {"status": status, "detail": detail or "xbridger doctor exit %d" % rc, "data": {}}
+if conns is not None:
+    out["data"]["connections"] = conns
+    if isinstance(conns, (list, dict)):
+        out["value"] = len(conns)
+elif doc is not None:
+    out["data"]["doctor"] = doc
+print(json.dumps(out))
+' <<<"$out"
+	exit 0
+fi
+
+if command -v jq >/dev/null 2>&1 && [ -n "$out" ] && printf '%s' "$out" | jq -e . >/dev/null 2>&1; then
+	printf '%s' "$out" | jq -c --arg st "$status" --arg why "${reason:-xbridger doctor exit $rc}" '
+		(if type == "object" then (.connections // null) elif type == "array" then . else null end) as $c
+		| {status: $st, detail: $why,
+		   data: (if $c != null then {connections: $c} else {doctor: .} end)}
+		  + (if ($c | type) == "array" or ($c | type) == "object" then {value: ($c | length)} else {} end)'
+	exit 0
+fi
+
+printf '{"status":"%s","detail":%s}\n' "$status" "$(json_str "${reason:-xbridger doctor exit $rc}")"

@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -23,7 +25,8 @@ type Config struct {
 	Hub string `yaml:"hub" json:"hub"`
 	// Node is this server's topology node id, e.g. "relay-1".
 	Node string `yaml:"node" json:"node"`
-	// TokenFile holds the per-agent push token (mode 0600, owned by the agent user).
+	// TokenFile holds the per-agent push token (root:vpnmap-agent, mode 0640,
+	// so the agent can read but not replace it).
 	TokenFile string `yaml:"token_file" json:"token_file"`
 	// Interval between pushes. Default 5s.
 	Interval Duration `yaml:"interval" json:"interval"`
@@ -125,7 +128,8 @@ type LocalCheck struct {
 	Timeout  Duration `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
-// ProbeConfig is used by the probe (vpnmap-agent --mode probe).
+// ProbeConfig turns the agent into the end-to-end probe (a `probe:` section
+// in agent.yaml enables it).
 type ProbeConfig struct {
 	// SingBox is the path of the sing-box binary.
 	SingBox string `yaml:"sing_box" json:"sing_box"`
@@ -187,8 +191,8 @@ func ValidID(s string) bool { return reID.MatchString(s) }
 func (c *Config) Validate() error {
 	var errs []string
 	add := func(f string, a ...any) { errs = append(errs, fmt.Sprintf(f, a...)) }
-	if !strings.HasPrefix(c.Hub, "https://") && !strings.HasPrefix(c.Hub, "http://127.0.0.1") && !strings.HasPrefix(c.Hub, "http://localhost") {
-		add("hub must be an https:// URL")
+	if !hubURLOK(c.Hub) {
+		add("hub must be an https:// URL without credentials (http only for 127.0.0.1/localhost)")
 	}
 	if !reID.MatchString(c.Node) {
 		add("node %q is not a valid id", c.Node)
@@ -234,7 +238,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	for _, h := range c.HTTP {
-		if !reID.MatchString(h.ID) || !(strings.HasPrefix(h.URL, "https://") || strings.HasPrefix(h.URL, "http://")) {
+		if u, err := url.Parse(h.URL); !reID.MatchString(h.ID) || err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
 			add("http %q: needs an id and an http(s) URL", h.ID)
 		}
 	}
@@ -249,7 +253,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	for _, p := range c.Prom {
-		if !reID.MatchString(p.ID) || !(strings.HasPrefix(p.URL, "http://127.0.0.1") || strings.HasPrefix(p.URL, "http://localhost")) {
+		if u, err := url.Parse(p.URL); !reID.MatchString(p.ID) || err != nil || u.Scheme != "http" || u.User != nil || !isLoopback(u.Hostname()) {
 			add("prom %q: needs an id and a local http://127.0.0.1 URL", p.ID)
 		}
 		if len(p.Metrics) == 0 {
@@ -261,10 +265,41 @@ func (c *Config) Validate() error {
 			add("local check id %q is invalid", ch.ID)
 		}
 	}
+	if c.Probe != nil {
+		if !strings.HasPrefix(c.Probe.SingBox, "/") {
+			add("probe.sing_box must be an absolute path")
+		}
+		for _, r := range c.Probe.Routes {
+			if !reID.MatchString(r.Route) || !strings.HasPrefix(r.OutboundFile, "/") {
+				add("probe route %q: needs a valid route id and an absolute outbound_file", r.Route)
+			}
+			if r.ExpectCountry != "" && !regexp.MustCompile(`^[A-Z]{2}$`).MatchString(r.ExpectCountry) {
+				add("probe route %q: expect_country must be a two-letter code", r.Route)
+			}
+		}
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid agent config:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 	return nil
+}
+
+// hubURLOK parses the URL instead of matching prefixes, so tricks like
+// http://127.0.0.1@evil.example or http://127.0.0.1.evil.example are refused.
+func hubURLOK(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	return u.Scheme == "https" || (u.Scheme == "http" && isLoopback(u.Hostname()))
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func validHostPort(s string) bool {

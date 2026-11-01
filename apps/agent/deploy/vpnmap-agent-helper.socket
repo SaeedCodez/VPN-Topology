@@ -1,0 +1,19 @@
+# Privileged read helper for vpnmap-agent. Only root and the vpnmap-agent
+# group can connect; systemd starts one vpnmap-agent-helper@.service per
+# connection (Accept=yes), which answers one request and exits.
+[Unit]
+Description=VPN Topology agent privileged read helper (socket)
+
+[Socket]
+ListenStream=/run/vpnmap-agent/helper.sock
+SocketUser=root
+SocketGroup=vpnmap-agent
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+# The agent makes a handful of calls per push; anything beyond this is a bug.
+MaxConnections=16
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
