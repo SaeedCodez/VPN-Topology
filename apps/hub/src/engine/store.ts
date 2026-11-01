@@ -97,7 +97,9 @@ export class LatestStore {
       const at = Date.parse(p.at) || now;
       const cur = this.probes.get(p.route);
       if (cur && at <= cur.lastAt) continue;
-      const failures = p.ok ? 0 : (cur?.failures ?? 0) + 1;
+      // A failure of the probe's own client (sing-box missing, outbound file
+      // missing) says nothing about the route: keep the streak unchanged.
+      const failures = p.ok ? 0 : probeSideError(p.error) ? cur?.failures ?? 0 : (cur?.failures ?? 0) + 1;
       this.probes.set(p.route, { failures, last: p, lastAt: at });
     }
     return fx;
@@ -142,6 +144,11 @@ export class LatestStore {
   hubResult(key: string): HubProbeResult | undefined {
     return this.hubProbes.get(key);
   }
+}
+
+/** Errors reported by the probe about itself rather than about the route. */
+export function probeSideError(err: string | undefined): boolean {
+  return !!err && err.startsWith('sing-box:');
 }
 
 export function promKey(name: string, labels?: Record<string, string>): string {

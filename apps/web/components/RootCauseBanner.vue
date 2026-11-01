@@ -21,7 +21,10 @@ function focus(kind: string, id: string) {
       <button class="flex w-full items-center gap-3 px-4 py-3 text-left" @click="focus(top.kind, top.elementId)">
         <span class="dot" :class="top.impact === 'outage' ? 'down' : 'degraded'" />
         <span class="min-w-0 flex-1">
-          <span class="block text-[12px] font-medium uppercase tracking-[0.06em]" :class="top.impact === 'outage' ? 'text-down' : 'text-warn'">Probable root cause</span>
+          <span class="flex items-center gap-2 text-[12px] font-medium uppercase tracking-[0.06em]" :class="top.impact === 'outage' ? 'text-down' : 'text-warn'">
+            Probable root cause
+            <span v-if="top.squads?.length" class="pill h-5 px-2 text-[11px] normal-case tracking-normal" :class="top.critical ? 'bg-down text-white' : 'bg-subtle text-fg-2'">{{ top.squads.join(' · ') }}</span>
+          </span>
           <span class="block truncate text-[15px] font-semibold leading-6">
             {{ top.title }}<span class="font-normal text-fg-2"> — {{ top.summary }}</span>
           </span>

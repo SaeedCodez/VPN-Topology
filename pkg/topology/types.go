@@ -27,6 +27,10 @@ type Settings struct {
 	RebootWindow Duration `yaml:"reboot_window,omitempty" json:"reboot_window,omitempty"`
 	// Hub is the public URL of the hub (used in generated agent configs).
 	Hub string `yaml:"hub,omitempty" json:"hub,omitempty"`
+	// CriticalSquads are the paying squads. A broken route that serves one of
+	// them makes the whole board an outage (red), however few users are online;
+	// broken routes of other squads (tests, personal) only make it degraded.
+	CriticalSquads []string `yaml:"critical_squads,omitempty" json:"critical_squads,omitempty"`
 }
 
 // Group is a frame on the canvas (a datacenter, a provider, home).

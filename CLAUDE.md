@@ -77,6 +77,8 @@ Use the `add-component` skill. In short:
 - Route: ordered `hops` (link ids) from the users to an exit, `users`
   (live collector) / `users_estimate`, `squads`, `probe`, `impact`
   (outage|degraded). Root cause = first failing hop of a broken route.
+  A broken route serving a squad listed in `settings.critical_squads`
+  (map.yaml) turns the whole board red.
 - Check = `{ collector: <name>, ...params }` from the **closed catalog**:
   `vpnmap explain collector` lists them, `vpnmap explain collector <name>`
   shows parameters + example. `on_fail: degraded` makes a failure amber.

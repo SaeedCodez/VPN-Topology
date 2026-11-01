@@ -253,6 +253,21 @@ func resolve(b *Bundle, ds *Diagnostics) {
 		checkDocs(r.Docs, f, line, ds)
 	}
 
+	// Critical squads must be served by some route.
+	for _, sq := range b.Map.Settings.CriticalSquads {
+		used := false
+		for _, r := range b.Routes {
+			for _, x := range r.Squads {
+				if x == sq {
+					used = true
+				}
+			}
+		}
+		if !used {
+			ds.warnf(mapFile, 0, 0, "add the squad to a route's `squads:` or remove it from settings.critical_squads", "critical squad %q is not served by any route", sq)
+		}
+	}
+
 	// Alerts.
 	for i := range b.Alerts {
 		a := &b.Alerts[i]

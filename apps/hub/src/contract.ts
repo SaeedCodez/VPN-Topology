@@ -117,7 +117,7 @@ export interface Bundle {
     schema: string;
     name: string;
     docs?: string;
-    settings: { timezone?: string; stale_after: number; reboot_window: number; hub?: string };
+    settings: { timezone?: string; stale_after: number; reboot_window: number; hub?: string; critical_squads?: string[] };
     groups: Group[];
     sources?: { id: string; title: string; location?: string; notes?: string }[];
   };
@@ -211,6 +211,9 @@ export interface RootCause {
   impact: 'outage' | 'degraded';
   usersAffected: number;
   usersSource: 'live' | 'estimate' | 'mixed';
+  /** True when a broken route serves a paying squad (settings.critical_squads). */
+  critical: boolean;
+  squads: string[];
   routes: string[];
   affected: { nodes: string[]; links: string[] };
   since: string;

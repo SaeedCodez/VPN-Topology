@@ -67,6 +67,11 @@ node. Users affected = live online users of the broken routes (or the declared
 estimate), deduplicated. Control-plane failures (panel, central, backups) are
 roots of their own and mark the control links they serve.
 
+**Overall status.** Red (outage) when a broken route serves a paying squad
+(`settings.critical_squads` in `topology/map.yaml`: Premium, Economic), however
+few users are online; amber (degraded) for anything else that is not healthy,
+e.g. a broken Mullvad-Test or Xbox route; green when everything is healthy.
+
 **Time travel.** Every 10 s the observations are written as series
 (`c:<check>:s|v`, `l:<link>:up|down|conns`, `n:<node>:cpu…`, `r:<route>:…`).
 `--at` / the slider rebuilds the board at that moment by running the same
@@ -122,12 +127,10 @@ VPNMAP_HUB=http://localhost:4000 ./bin/vpnmap status
 **Production (Coolify, 171.22.27.214):** `docker-compose.yml` runs `hub`, `web`
 (nginx serving the SPA and proxying `/api`, `/ws`, `/agent` to the hub),
 `postgres` and `victoriametrics` (180 d retention, 10 s dedup). Point the
-domain (map.imdev.ir, to confirm) at `web:8080`. Build args `NPM_REGISTRY`,
+domain (map.imdev.ir) at `web:8080`. Build args `NPM_REGISTRY`,
 `ALPINE_MIRROR`, `GOPROXY` take the Iranian mirrors. The hub image also
 serves `/agent/install.sh`, `/agent/uninstall.sh` and the agent binaries
-(+ `.sha256`). The e2e probe is **not** in the compose file on purpose: it must
-run on an Iranian server outside the user path (to decide); it is the same
-agent binary with a `probe:` section.
+(+ `.sha256`). The e2e probe runs as the `probe` service for now (see below).
 
 ### Environment variables (names only; values in Coolify)
 
@@ -142,6 +145,7 @@ agent binary with a `probe:` section.
 | `AGENT_TOKENS` | `node=sha256,...` per-agent push tokens (`vpnmap agent token <node>`) |
 | `RW_API_URL`, `RW_API_TOKEN` | Remnawave API, dedicated monitoring user |
 | `XUI_FRANCE_URL`, `XUI_FRANCE_USER`, `XUI_FRANCE_PASS` | 3x-ui on the France exit (inbound list only) |
+| `PROBE_TOKEN`, `PROBE_OUTBOUND_MAIN`, `PROBE_OUTBOUND_MULLVAD_DE/US/TR` | probe container: push token and the monitoring user's sing-box outbounds |
 | `TELEGRAM_API_ROOT`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | alerts via the Cloudflare Workers proxy (phase 2) |
 | `TOPOLOGY_ROOT`, `VPNMAP_BIN`, `AGENT_DIST_DIR` | set in the image |
 | `NPM_REGISTRY`, `ALPINE_MIRROR`, `GOPROXY` | build mirrors |
@@ -168,10 +172,39 @@ agent binary with a `probe:` section.
 Day to day: `vpnmap status`, `vpnmap diagnose`, the board. Changes to the map:
 see CLAUDE.md (validate → plan → owner approves → apply → docs → Notion).
 
+## The end-to-end probe (temporarily on Coolify)
+
+The probe acts like a real user: every 30 s it opens each route (main via
+Relay 1, Mullvad DE/US/TR) with a real VPN client (sing-box), fetches
+`http://cp.cloudflare.com/generate_204`, measures latency and checks the exit
+country. It is the only check that sees what users see (on 2026-10-13 every
+component looked "Connected" while :9000 was closed). It runs as the `probe`
+container of the Coolify stack for now; it should move to an Iranian server
+outside the user path, and while Coolify's location is unverified its results
+show that server's vantage point.
+
+Setup (owner):
+1. **Backup first**, then create a dedicated Remnawave user (e.g. `monitoring-probe`)
+   with access to the main and Mullvad inbounds. It counts as one online user.
+2. Fetch its subscription in sing-box format and take one outbound per route
+   (the tags are the host remarks shown in the panel):
+   ```bash
+   curl -s -A 'SFA/1.0' "https://wp.api.mohiraweb.ir/api/sub/<SHORT_UUID>" | jq -c '.outbounds[] | select(.type=="vless") | {tag}'
+   curl -s -A 'SFA/1.0' "https://wp.api.mohiraweb.ir/api/sub/<SHORT_UUID>" | jq -c '.outbounds[] | select(.tag=="<TAG>")'
+   ```
+3. Put each one-line JSON in Coolify as `PROBE_OUTBOUND_MAIN`, `PROBE_OUTBOUND_MULLVAD_DE`,
+   `PROBE_OUTBOUND_MULLVAD_US`, `PROBE_OUTBOUND_MULLVAD_TR`.
+4. `vpnmap agent token probe`: the token goes in `PROBE_TOKEN`, the printed
+   `probe=<sha256>` is appended to `AGENT_TOKENS`.
+
+The container generates its agent config from the topology in the image, so
+new routes with a probe are picked up on the next deploy. A route without an
+outbound shows "no data" (grey), never a false outage; the same holds when the
+probe's own client fails.
+
 ## Open questions
 
-- **Probe server:** which Iranian server outside the user path runs the e2e probe?
-- **Domain:** map.imdev.ir confirmed?
+- **Probe server:** runs on Coolify for now; to move to an Iranian server outside the user path.
 - **Coolify location:** if the hub is abroad, hub-side probes see the network
   from abroad; Iran-side checks come from agents and the probe.
 - **Exact outputs** of `relay-ctl status` and `xbridger doctor --json` (the

@@ -407,6 +407,7 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
   }
 
   // ---- root causes
+  const critical = new Set(b.map.settings.critical_squads ?? []);
   const rootCauses: RootCause[] = [];
   for (const [key, aff] of affectedBy) {
     const [kind, id] = key.split(/:(.*)/s) as ['node' | 'link' | 'route', string];
@@ -471,6 +472,8 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
       impact: outage.length || (!rts.length && kind !== 'route') ? 'outage' : 'degraded',
       usersAffected: rts.length ? u.total : 0,
       usersSource: u.source,
+      critical: outage.some((r) => (r.squads ?? []).some((q) => critical.has(q))),
+      squads: [...new Set(rts.flatMap((r) => r.squads ?? []))],
       routes: rts.map((r) => r.id),
       affected: { nodes: [...aff.nodes], links: [...aff.links] },
       since: iso(since),
@@ -483,7 +486,7 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
   }
   // Rank: users who lost connectivity count fully, degraded service (e.g.
   // subscriptions cannot update) counts 5 %.
-  const score = (r: RootCause) => r.usersAffected * (r.impact === 'outage' ? 1 : 0.05) + (r.kind === 'node' ? 0.5 : 0);
+  const score = (r: RootCause) => (r.critical ? 1e6 : 0) + r.usersAffected * (r.impact === 'outage' ? 1 : 0.05) + (r.kind === 'node' ? 0.5 : 0);
   rootCauses.sort((a, b2) => score(b2) - score(a));
 
   // ---- overall
@@ -508,7 +511,11 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
   const totalUsers = Math.max(1, usersOnline ?? b.routes.reduce((s, r) => s + (routes[r.id].users ?? 0), 0));
   let status: Health = 'ok';
   if (counts.degraded || counts.down || brokenRoutes.length) status = 'degraded';
-  for (const rc of rootCauses) if (rc.impact === 'outage' && rc.usersAffected >= Math.max(5, totalUsers * 0.1)) status = 'down';
+  // Red when a paying squad loses a route (however few users are online right
+  // now); without critical_squads configured, fall back to a size threshold.
+  for (const rc of rootCauses) {
+    if (critical.size ? rc.critical : rc.impact === 'outage' && rc.usersAffected >= Math.max(5, totalUsers * 0.1)) status = 'down';
+  }
   if (!counts.ok && !counts.degraded && !counts.down) status = 'unknown';
   const overall: Overall = {
     status,

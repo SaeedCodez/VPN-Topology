@@ -1,0 +1,27 @@
+# End-to-end probe: vpnmap-agent in probe mode next to sing-box (build context:
+# repository root). Runs a real VPN client per route with a dedicated
+# Remnawave monitoring user and pushes results to the hub. See
+# apps/agent/deploy/probe-entrypoint.sh for its environment variables.
+ARG GO_IMAGE=golang:1.24-alpine
+ARG SINGBOX_IMAGE=ghcr.io/sagernet/sing-box:v1.12.12
+
+FROM ${GO_IMAGE} AS go
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG VERSION=dev
+ENV GOPROXY=${GOPROXY} CGO_ENABLED=0
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY pkg ./pkg
+COPY apps/cli ./apps/cli
+COPY apps/agent ./apps/agent
+RUN go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/vpnmap ./apps/cli \
+ && go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/vpnmap-agent ./apps/agent
+
+FROM ${SINGBOX_IMAGE}
+COPY --from=go /out/vpnmap /out/vpnmap-agent /usr/local/bin/
+COPY apps/agent/deploy/probe-entrypoint.sh /usr/local/bin/probe-entrypoint
+COPY topology /app/repo/topology
+RUN mkdir -p /etc/vpnmap-agent && chown 65534:65534 /etc/vpnmap-agent
+USER 65534:65534
+ENTRYPOINT ["/usr/local/bin/probe-entrypoint"]
