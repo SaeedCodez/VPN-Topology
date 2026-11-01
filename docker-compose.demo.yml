@@ -1,0 +1,28 @@
+# Demo stack: the board with simulated data and replays of the real incidents.
+# No secrets, no servers, no Postgres. Run:
+#   docker compose -f docker-compose.demo.yml up --build
+# Then open http://localhost:8080
+name: vpn-topology-demo
+
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: apps/hub/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    environment:
+      HUB_MODE: demo
+      PUBLIC_URL: http://localhost:8080
+    ports: ['4000:4000']   # API for the vpnmap CLI: VPNMAP_HUB=http://localhost:4000
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    depends_on: [hub]
+    ports: ['8080:8080']

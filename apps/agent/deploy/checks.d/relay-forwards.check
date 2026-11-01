@@ -1,0 +1,58 @@
+#!/bin/bash
+# vpnmap local check: relay forwards (read-only)
+#
+# Reports whether the realm relay is active and how many forwards
+# `relay-ctl status` lists. The forward count is a best-effort parse: lines
+# like "0.0.0.0:443 -> 10.0.0.2:443", "listen = ..." or "[[endpoints]]"
+# blocks are counted; adapt count_forwards() if your relay-ctl prints
+# something else. Status is ok whenever realm is active.
+#
+#   {"status":"ok|down","value":<forwards>,"detail":"...","data":{...}}
+#
+# Install (as root), then list it in agent.yaml:
+#   install -o root -g root -m 0755 relay-forwards.check /etc/vpnmap-agent/checks.d/
+#   checks: [{id: relay-forwards, interval: 60s}]
+set -u
+
+UNIT=realm.service
+
+json_str() {
+	local s=$1
+	s=${s//\\/\\\\}
+	s=${s//\"/\\\"}
+	s=${s//$'\t'/\\t}
+	s=${s//$'\r'/\\r}
+	s=${s//$'\n'/\\n}
+	printf '"%s"' "$(printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037')"
+}
+
+count_forwards() { # stdin: relay-ctl status output
+	local text arrows endpoints listens n
+	text=$(cat)
+	arrows=$(printf '%s\n' "$text" | grep -cE -- '(->|=>|→)')
+	endpoints=$(printf '%s\n' "$text" | grep -cE '^[[:space:]]*\[\[endpoints\]\]')
+	listens=$(printf '%s\n' "$text" | grep -ciE '^[[:space:]]*"?listen"?[[:space:]]*[=:]')
+	n=$arrows
+	[ "$endpoints" -gt "$n" ] && n=$endpoints
+	[ "$listens" -gt "$n" ] && n=$listens
+	echo "$n"
+}
+
+state=$(systemctl is-active "$UNIT" 2>/dev/null)
+[ -n "$state" ] || state=unknown
+
+out=$(timeout 10 relay-ctl status 2>/dev/null)
+rc=$?
+forwards=$(printf '%s' "$out" | count_forwards)
+
+if [ "$state" = active ]; then
+	status=ok
+	detail="realm active, $forwards forwards"
+	[ "$rc" -ne 0 ] && detail="realm active; relay-ctl status exited $rc"
+else
+	status=down
+	detail="realm is $state"
+fi
+
+printf '{"status":"%s","value":%d,"detail":%s,"data":{"realm":%s,"forwards":%d,"relay_ctl_exit":%d}}\n' \
+	"$status" "$forwards" "$(json_str "$detail")" "$(json_str "$state")" "$forwards" "$rc"

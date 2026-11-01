@@ -1,0 +1,245 @@
+# yaml-language-server: $schema=../../schema/topology.schema.json
+component: main-route
+title: Main route (Premium + Economic → France)
+docs: https://app.notion.com/p/3f828d2a9e9b819d90d8e9173fac68bc   # 01 · Flow A
+description: >-
+  Users connect with VLESS+REALITY to Relay 1 (realm), which forwards raw TCP to
+  the Local-Node Xray on the panel server. Non-.ir traffic leaves through
+  outbound proxy_MAIN (SS-2022) to XBridger node 3 connection mt6snj5mlbnn,
+  which tunnels VLESS+WS+TLS through Cloudflare to the France 3x-ui exit.
+  .ir domains go DIRECT from Iran.
+
+nodes:
+  - id: users
+    name: Users
+    kind: users
+    group: external
+    role: "Squads: Premium + Economic (~1,742), Mullvad-Test, Xbox"
+    facts:
+      - { label: Accounts, value: "1,828 (Remnawave, 2026-10-13)" }
+      - { label: Brands, value: "Chitnet, Lightvpn (external squads)" }
+      - { label: Clients, value: "Xray / sing-box / Clash apps" }
+    metrics:
+      - { id: online, label: Online, collector: remnawave-online }
+    card: [online]
+
+  - id: relay-1
+    name: Relay 1
+    kind: relay
+    group: iran-dc
+    address: [31.56.89.121, relay-1.aitopology.ir]
+    role: realm TCP forwarder, user entry on tcp/2053 (relay-ctl)
+    agent: true
+    docs: https://app.notion.com/p/3f828d2a9e9b816889bbe3c60fbc869a
+    facts:
+      - { label: Software, value: "realm 2.9.4 + relay-ctl" }
+      - { label: Live forward, value: "XBRIDGER-1 :2053 → 81.12.50.23:2053" }
+      - { label: Source of truth, value: "/etc/realm/forwards.yaml (relay-ctl)" }
+    checks:
+      - { id: realm, collector: systemd-unit, host: relay-1, unit: realm.service }
+      - { id: forwards, collector: local-check, host: relay-1, check: relay-forwards, on_fail: degraded }
+    metrics:
+      - { id: conns, label: Conns, collector: ss-conns, host: relay-1, port: 2053 }
+    card: [conns, cpu, net]
+    runbook:
+      - { title: relay-ctl status and realm log, cmd: "ssh root@31.56.89.121 'relay-ctl status; tail -5 /var/log/realm/realm.log'" }
+      - { title: Established user connections on 2053, cmd: "ssh root@31.56.89.121 'ss -Htn state established sport = :2053 | wc -l'" }
+
+  - id: local-node
+    name: Local-Node
+    kind: vpn-node
+    group: iran-dc
+    address: [81.12.50.23]
+    role: Remnawave node (Xray) on the panel server, inbound VLESS_XBRIDGER_MAIN on 2053
+    docs: https://app.notion.com/p/3f828d2a9e9b815fb4dcd856c7494e0d
+    facts:
+      - { label: Software, value: "remnanode 3.4.2, Xray 26.7.28" }
+      - { label: Inbound, value: "VLESS_XBRIDGER_MAIN (REALITY, dest www.bmi.ir:443)" }
+      - { label: Routing, value: ".ir → DIRECT; rest → proxy_MAIN" }
+      - { label: Runs on, value: "panel server (host network)" }
+    checks:
+      - { id: remnawave, collector: remnawave-node, node: Local-Node }
+      - { id: container, collector: docker-container, host: panel, container: remnanode, require_healthy: false }
+    metrics:
+      - { id: online, label: Online, collector: remnawave-online, node: Local-Node }
+      - { id: conns, label: Conns, collector: ss-conns, host: panel, port: 2053 }
+    card: [online, conns]
+    runbook:
+      - { title: Node container status, cmd: "ssh root@81.12.50.23 'docker ps --filter name=remnanode --format \"{{.Names}} {{.Status}}\"'" }
+      - { title: Remnawave nodes (API), cmd: "curl -s -H \"Authorization: Bearer $TOKEN\" https://pl.api.mohiraweb.ir/api/nodes | jq '.response[] | {name, isConnected, isNodeOnline, usersOnline}'" }
+
+  - id: xbridger-node-3
+    name: XBridger node 3
+    kind: bridge
+    group: iran-dc
+    address: [31.56.89.125, node3.xbridger.imdev.ir]
+    role: "Bridge worker; connection mt6snj5mlbnn = SS-2022 :9000 (proxy_MAIN target)"
+    agent: true
+    docs: https://app.notion.com/p/3f828d2a9e9b81dfb288fbc154793cd1
+    facts:
+      - { label: Connection, value: "mt6snj5mlbnn · port_index 0 → :9000" }
+      - { label: Outbound config, value: "FR: VLESS+WS+TLS via chatgpt.com:443, SNI pnl-1.sirparzhak.xyz" }
+      - { label: Self-healing, value: "boot restore + 15 s reconcile (PR #4, 2026-10-13)" }
+    checks:
+      - { id: connection, collector: xbridger-connection, host: xbridger-node-3, connection: mt6snj5mlbnn }
+      - { id: container, collector: docker-container, host: xbridger-node-3, container: backend-app-1, require_healthy: false }
+      - { id: api, title: Node API via Arvan CDN, collector: http-probe, from: hub, url: "https://node3.xbridger.imdev.ir/graphql", expect: "2xx,4xx", on_fail: degraded }
+    metrics:
+      - { id: conns, label: Conns, collector: ss-conns, host: xbridger-node-3, port: 9000 }
+    card: [connection, conns, cpu]
+    runbook:
+      - { title: XBridger doctor, cmd: "ssh root@31.56.89.125 'docker exec backend-app-1 xbridger doctor'" }
+      - { title: Is :9000 open from the panel, cmd: "ssh root@81.12.50.23 'timeout 5 bash -c \"echo > /dev/tcp/31.56.89.125/9000\" && echo OPEN || echo DOWN'" }
+      - { title: Node API ping, cmd: "curl -s -X POST -H 'Content-Type: application/json' -d '{\"query\":\"{ ping }\"}' https://node3.xbridger.imdev.ir/graphql" }
+
+  - id: cloudflare-edge
+    name: Cloudflare edge
+    kind: edge
+    group: external
+    address: [chatgpt.com:443]
+    role: "Path from XBridger to France: dial chatgpt.com:443, SNI pnl-1.sirparzhak.xyz"
+    docs: https://app.notion.com/p/3f828d2a9e9b815a870dc44ba30e71e8
+    checks:
+      - { id: tls, collector: tls-expiry, host: pnl-1.sirparzhak.xyz }
+
+  - id: france-exit
+    name: France exit
+    kind: exit
+    group: abroad
+    address: [188.130.207.152]
+    role: "3x-ui, VLESS+WS+TLS :443, exit of the main route"
+    agent: true
+    docs: https://app.notion.com/p/3f828d2a9e9b81268c13ce46cf3594a9
+    facts:
+      - { label: Software, value: "3x-ui 3.5.0, Xray 26.7.11" }
+      - { label: Size, value: "1 vCPU, 1.9 GiB RAM, 19 GB disk" }
+      - { label: Inbound, value: "Cloudflare-WS (pnl-1.sirparzhak.xyz, path /wp-json)" }
+    checks:
+      - { id: x-ui, collector: systemd-unit, host: france-exit, unit: x-ui.service }
+    card: [cpu, disk, net]
+    runbook:
+      - { title: x-ui status and disk, cmd: "ssh root@188.130.207.152 'systemctl is-active x-ui; df -h /'" }
+
+  - id: internet
+    name: Internet
+    kind: internet
+    group: external
+    role: Destination of every route (incl. DIRECT for .ir domains)
+
+links:
+  - id: e1
+    label: E1
+    title: Users → Relay 1
+    from: users
+    to: relay-1
+    plane: data
+    protocol: VLESS+REALITY tcp/2053
+    traffic: { collector: nft-counter, host: relay-1, up: { hook: input, proto: tcp, dport: 2053 }, down: { hook: output, proto: tcp, sport: 2053 } }
+    conns: { collector: ss-conns, host: relay-1, port: 2053 }
+    health: { collector: tcp-connect, from: probe, target: "relay-1.aitopology.ir:2053", interval: 15s }
+
+  - id: e2
+    label: E2
+    title: Relay 1 → Local-Node (forward XBRIDGER-1)
+    from: relay-1
+    to: local-node
+    plane: data
+    protocol: TCP forward to 81.12.50.23:2053
+    traffic: { collector: nft-counter, host: relay-1, up: { hook: output, proto: tcp, daddr: 81.12.50.23, dport: 2053 }, down: { hook: input, proto: tcp, saddr: 81.12.50.23, sport: 2053 } }
+    conns: { collector: ss-conns, host: relay-1, port: 2053, side: remote }
+    health: { collector: tcp-connect, from: relay-1, target: "81.12.50.23:2053", interval: 15s }
+
+  - id: e3
+    label: E3
+    title: Local-Node → XBridger :9000 (proxy_MAIN)
+    from: local-node
+    to: xbridger-node-3
+    plane: data
+    protocol: SS-2022 proxy_MAIN tcp/9000
+    traffic:
+      collector: xray-stats
+      host: panel
+      node: Local-Node
+      outbound: proxy_MAIN
+      fallback: { collector: nft-counter, host: panel, up: { hook: output, proto: tcp, daddr: 31.56.89.125, dport: 9000 }, down: { hook: input, proto: tcp, saddr: 31.56.89.125, sport: 9000 } }
+    conns: { collector: ss-conns, host: panel, port: 9000, side: remote }
+    health: { collector: tcp-connect, from: panel, target: "31.56.89.125:9000", interval: 15s }
+    notes: "2026-10-13: closed after node 3 rebooted; XBridger did not restart the connection (fixed by PR #4)."
+    runbook:
+      - { title: Is :9000 open from the panel, cmd: "ssh root@81.12.50.23 'timeout 5 bash -c \"echo > /dev/tcp/31.56.89.125/9000\" && echo OPEN || echo DOWN'" }
+      - { title: Connections from Local-Node to :9000, cmd: "ssh root@81.12.50.23 'ss -Htn state established dst 31.56.89.125:9000 | wc -l'" }
+
+  - id: e4
+    label: E4
+    title: Local-Node → Internet (DIRECT .ir)
+    from: local-node
+    to: internet
+    plane: data
+    protocol: DIRECT for regexp:.*\.ir$
+    traffic: { collector: xray-stats, host: panel, node: Local-Node, outbound: DIRECT }
+
+  - id: e5a
+    label: E5a
+    title: XBridger → Cloudflare
+    from: xbridger-node-3
+    to: cloudflare-edge
+    plane: data
+    protocol: VLESS+WS+TLS, dial chatgpt.com:443
+    traffic: { collector: nft-counter, host: xbridger-node-3, up: { hook: output, proto: tcp, dport: 443 }, down: { hook: input, proto: tcp, sport: 443 } }
+    health: { collector: xbridger-connection, host: xbridger-node-3, connection: mt6snj5mlbnn }
+    notes: Traffic counts all tcp/443 egress of node 3, which is almost only the bridge.
+
+  - id: e5b
+    label: E5b
+    title: Cloudflare → France 3x-ui
+    from: cloudflare-edge
+    to: france-exit
+    plane: data
+    protocol: "VLESS+WS+TLS :443, SNI pnl-1.sirparzhak.xyz, path /wp-json"
+    traffic: { collector: 3xui-inbound, panel: france, inbound: Cloudflare-WS }
+    health:
+      - { id: inbound, collector: 3xui-inbound, panel: france, inbound: Cloudflare-WS }
+      - { id: origin, collector: tcp-connect, from: hub, target: "188.130.207.152:443" }
+
+  - id: e6
+    label: E6
+    title: France → Internet
+    from: france-exit
+    to: internet
+    plane: data
+    protocol: egress
+    traffic: { collector: nft-counter, host: france-exit, up: { hook: output, oif: eth0 }, down: { hook: input, iif: eth0 } }
+    notes: "NIC counters; the interface name eth0 is UNVERIFIED (check with `ip -br link`). The route probe checks that the exit IP is French."
+
+routes:
+  - id: main
+    title: Main route · France via Relay 1
+    hops: [e1, e2, e3, e5a, e5b, e6]
+    squads: [Premium, Economic]
+    users: { collector: remnawave-online, node: Local-Node }
+    users_estimate: 1742
+    probe: { collector: e2e-probe, expect_country: FR, interval: 30s, failures: 3 }
+    docs: https://app.notion.com/p/3f828d2a9e9b819d90d8e9173fac68bc
+
+  - id: main-direct
+    title: Main route · .ir domains DIRECT
+    hops: [e1, e2, e4]
+    squads: [Premium, Economic]
+    users: { collector: remnawave-online, node: Local-Node }
+    users_estimate: 1742
+    impact: degraded
+
+alerts:
+  - id: main-probe-failing
+    when: "route.main.probe_failures >= 3"
+    severity: critical
+    title: Main route probe failing
+    message_fa: "مسیر اصلی (فرانسه) قطع است؛ پروب سرتاسری سه بار پشت سر هم ناموفق بود."
+    message_en: "Main route (France) is down: the end-to-end probe failed 3 times in a row."
+
+  - id: xbridger-connection-not-running
+    when: "link.e3.health == down and node.xbridger-node-3.check.api.status == ok"
+    severity: critical
+    title: XBridger connection not running
+    message_fa: "اتصال XBridger روی نود ۳ اجرا نمی‌شود: پورت ۹۰۰۰ از سمت پنل بسته است، ولی API نود پاسخ می‌دهد."
+    message_en: "XBridger connection not running: :9000 is closed from the panel while the node 3 API answers."

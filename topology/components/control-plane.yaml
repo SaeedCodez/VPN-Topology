@@ -1,0 +1,132 @@
+# yaml-language-server: $schema=../../schema/topology.schema.json
+component: control-plane
+title: Control plane (Remnawave panel, XBridger central, backups)
+docs: https://app.notion.com/p/3f828d2a9e9b819d90d8e9173fac68bc   # 01 · Flow D
+description: >-
+  The Remnawave backend on the panel server pushes Xray configs to the nodes
+  over the node API (tcp/2222). XBridger central on Coolify manages node 3
+  through the Arvan CDN. A cron job backs the panel database up to
+  ArvanCloud S3 every 30 minutes. 2026-10-20 and 2026-10-22: rw-api hung at
+  ~100 % CPU while the container still reported healthy; a watchdog now
+  restarts it after 3 failed health checks.
+
+nodes:
+  - id: panel
+    name: Panel server
+    kind: panel
+    group: iran-dc
+    address: [81.12.50.23, pl.api.mohiraweb.ir]
+    role: "Remnawave backend 3.4.5, Postgres, Valkey, nginx, subscription page, watchdog cron"
+    agent: true
+    docs: https://app.notion.com/p/3f828d2a9e9b815fb4dcd856c7494e0d
+    facts:
+      - { label: Software, value: "remnawave/backend 3.4.5, postgres 17.6, valkey 8.1, nginx 1.28" }
+      - { label: Size, value: "2 vCPU, 3.8 GiB RAM, 35 GB disk" }
+      - { label: Watchdog, value: "/opt/remnawave-watchdog/watchdog.sh, every minute, 10 min cooldown" }
+      - { label: Firewall, value: "UFW inactive; 2222 open to the internet (08 #3)" }
+    checks:
+      - { id: api, title: rw-api answers, collector: http-probe, from: panel, url: "http://127.0.0.1:3000/api/auth/status", max_latency: 5s, slow: 2s, expect: "2xx,4xx", interval: 15s }
+      - { id: backend, collector: docker-container, host: panel, container: remnawave }
+      - { id: db, collector: docker-container, host: panel, container: remnawave-db }
+      - { id: redis, collector: docker-container, host: panel, container: remnawave-redis }
+      - { id: nginx, collector: docker-container, host: panel, container: remnawave-nginx, require_healthy: false }
+      - { id: watchdog, title: Watchdog restarts, collector: log-match, host: panel, path: /var/log/remnawave-watchdog.log, pattern: "(?i)restart", mode: event, event: watchdog restarted remnawave }
+    metrics:
+      - { id: online, label: Online, collector: remnawave-online }
+    card: [api, cpu, mem]
+    runbook:
+      - { title: Containers and last backup, cmd: "ssh root@81.12.50.23 'docker ps --format \"table {{.Names}}\\t{{.Status}}\"; tail -3 /opt/remnawave-backup/backup.log'" }
+      - { title: rw-api CPU (hang = ~100 %), cmd: "ssh root@81.12.50.23 'docker stats --no-stream remnawave'" }
+      - { title: Watchdog log, cmd: "ssh root@81.12.50.23 'tail -20 /var/log/remnawave-watchdog.log'" }
+      - { title: Long favicon URLs in nginx log (2026-10-22 trigger), cmd: "ssh root@81.12.50.23 'docker logs --since 1h remnawave-nginx 2>&1 | grep -c favicons'" }
+
+  - id: coolify
+    name: Coolify · XBridger central
+    kind: server
+    group: coolify
+    address: [171.22.27.214, xbridger.imdev.ir]
+    role: "xbridger-api, xbridger-web, xbridger-postgres (and this hub)"
+    agent: true
+    docs: https://app.notion.com/p/3f828d2a9e9b81b19b0cf7f03a9a28c4
+    facts:
+      - { label: Size, value: "4 vCPU, 7.8 GiB RAM, 96 GB disk" }
+      - { label: Apps, value: "xbridger-api (central), xbridger-web, xbridger-postgres" }
+    checks:
+      - { id: central-api, title: XBridger central API, collector: http-probe, from: hub, url: "https://api.xbridger.imdev.ir/graphql", expect: "2xx,4xx" }
+      - { id: web, title: XBridger web UI, collector: http-probe, from: hub, url: "https://xbridger.imdev.ir/", on_fail: degraded }
+    card: [cpu, mem, disk]
+
+  - id: arvan-s3
+    name: ArvanCloud S3
+    kind: storage
+    group: external
+    address: [s3.ir-thr-at1.arvanstorage.ir]
+    role: "Bucket ctnt-backups, prefix remna-manage/main-db/"
+
+links:
+  - id: c1
+    label: C1
+    title: Panel → Local-Node (node API)
+    from: panel
+    to: local-node
+    plane: control
+    protocol: node API 172.18.0.1:2222
+    health: { collector: remnawave-node, node: Local-Node }
+
+  - id: c2
+    label: C2
+    title: Panel → Iran-Mullvad (node API)
+    from: panel
+    to: iran-mullvad
+    plane: control
+    protocol: node API 92.42.207.243:2222 (UFW allows only the panel)
+    health: { collector: remnawave-node, node: Iran-Mullvad }
+
+  - id: c3
+    label: C3
+    title: XBridger central → node 3
+    from: coolify
+    to: xbridger-node-3
+    plane: control
+    protocol: "REST/GraphQL via Arvan CDN → :80"
+    health: { collector: http-probe, from: coolify, url: "https://node3.xbridger.imdev.ir/graphql", expect: "2xx,4xx" }
+
+  - id: c5
+    label: C5
+    title: Panel → ArvanCloud S3 (DB backups)
+    from: panel
+    to: arvan-s3
+    plane: control
+    protocol: "pg_dump every 30 min, gzip, upload"
+    health: { collector: local-check, host: panel, check: remnawave-backup-age, interval: 1m }
+    runbook:
+      - { title: Last backup lines, cmd: "ssh root@81.12.50.23 'tail -3 /opt/remnawave-backup/backup.log'" }
+
+alerts:
+  - id: panel-api-slow
+    when: "node.panel.check.api.status == down"
+    severity: critical
+    title: Panel API slow or hung
+    message_fa: "API پنل Remnawave کندتر از ۵ ثانیه است یا پاسخ نمی‌دهد."
+    message_en: "The Remnawave panel API is slower than 5 s or not answering."
+
+  - id: watchdog-restart
+    when: "node.panel.check.watchdog.status != ok"
+    severity: critical
+    title: Watchdog restarted remnawave
+    message_fa: "واچ‌داگ، کانتینر remnawave را ری‌استارت کرد."
+    message_en: "The watchdog restarted the remnawave container."
+
+  - id: remnawave-node-disconnected
+    when: "collector.remnawave-node.status == down"
+    severity: critical
+    title: Remnawave node disconnected
+    message_fa: "نود Remnawave {name} قطع است."
+    message_en: "Remnawave node {name} is disconnected."
+
+  - id: backup-old
+    when: "link.c5.health == down"
+    severity: warning
+    title: Panel backup too old
+    message_fa: "آخرین بکاپ دیتابیس پنل قدیمی‌تر از ۴۵ دقیقه است."
+    message_en: "The last panel database backup is older than 45 minutes."

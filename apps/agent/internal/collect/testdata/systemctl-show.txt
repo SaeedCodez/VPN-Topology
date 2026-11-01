@@ -1,0 +1,22 @@
+Id=xray.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+ActiveEnterTimestampMonotonic=3600000000
+ActiveEnterTimestamp=Thu 2026-01-01 01:00:00 UTC
+NRestarts=2
+
+Id=remnanode.service
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+ActiveEnterTimestampMonotonic=0
+ActiveEnterTimestamp=
+NRestarts=14
+
+Id=nope.service
+LoadState=not-found
+ActiveState=inactive
+SubState=dead
+ActiveEnterTimestampMonotonic=0
+ActiveEnterTimestamp=

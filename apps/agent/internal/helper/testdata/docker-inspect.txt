@@ -1,0 +1,2 @@
+{"name":"/backend-app-1","state":"running","health":"healthy","started_at":"2026-10-30T08:00:00.123456789Z","restart_count":0,"image":"xbridger/backend:1.4.2"}
+{"name":"/remnawave","state":"restarting","health":"","started_at":"2026-11-01T19:59:00Z","restart_count":7,"image":"remnawave/backend:latest"}

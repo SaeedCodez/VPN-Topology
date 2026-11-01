@@ -1,0 +1,53 @@
+# One privileged read for vpnmap-agent: reads a single JSON request from the
+# socket, runs one of four fixed read-only operations (nft-counters, wg-dump,
+# docker-ps, check) after validating every argument against the root-owned
+# /etc/vpnmap-agent/agent.yaml, answers and exits.
+#
+# Hardening notes (why some options are absent):
+#   - root + CAP_NET_ADMIN: `nft list` and `wg show` need it.
+#   - CAP_SYS_ADMIN + RestrictNamespaces=mnt net: `ip netns exec` (wg inside a
+#     netns) switches namespaces and remounts /sys in a private mount ns,
+#     which is also why ProtectKernelTunables= is not set.
+#   - ProtectHome=yes: docker's CLI only needs /run/docker.sock. If one of
+#     your local checks needs /root, add a drop-in with ProtectHome=read-only.
+#   - MemoryDenyWriteExecute= is not set because local checks may be python.
+#   - No SystemCallFilter=: `ip netns exec` needs setns/mount.
+[Unit]
+Description=VPN Topology agent privileged read helper (one request)
+CollectMode=inactive-or-failed
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vpnmap-agent helper-serve --config /etc/vpnmap-agent/agent.yaml
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+User=root
+# The helper enforces 20s (checks: their timeout + 5s, at most 35s);
+# systemd is the backstop.
+RuntimeMaxSec=50
+TimeoutStopSec=5
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+UMask=0077
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+RestrictNamespaces=mnt net
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+MemoryMax=128M
+CPUQuota=25%
+TasksMax=64
+Nice=10

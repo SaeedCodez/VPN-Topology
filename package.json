@@ -1,0 +1,14 @@
+{
+  "name": "vpn-topology",
+  "private": true,
+  "description": "VPN Topology: live, read-only map of the VPN system (hub, web board, CLI, agent).",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test && go test ./...",
+    "dev:hub": "pnpm --filter @vpnmap/hub dev",
+    "dev:web": "pnpm --filter @vpnmap/web dev",
+    "validate": "go run ./apps/cli validate"
+  }
+}

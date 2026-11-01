@@ -1,0 +1,51 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  topology:
+    name: vpnmap validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24' }
+      - name: Validate topology files (errors name file, line and fix)
+        run: go run ./apps/cli validate
+      - name: Schema is generated from the code
+        run: go run ./apps/cli schema --check
+
+  go:
+    name: Go (cli, agent, topology)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24' }
+      - run: test -z "$(gofmt -l pkg apps/cli apps/agent)" || (gofmt -l pkg apps/cli apps/agent; exit 1)
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: GOOS=linux GOARCH=arm64 go build -o /dev/null ./apps/agent
+
+  node:
+    name: Hub and board
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24' }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.28.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: go build -o bin/vpnmap ./apps/cli
+      - name: Hub build and tests (replays the real incidents)
+        run: pnpm --filter @vpnmap/hub test
+      - name: Board typecheck and build
+        run: |
+          pnpm --filter @vpnmap/web exec nuxi prepare
+          pnpm --filter @vpnmap/web exec vue-tsc --noEmit -p tsconfig.json
+          pnpm --filter @vpnmap/web build

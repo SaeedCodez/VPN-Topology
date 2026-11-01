@@ -1,0 +1,55 @@
+#!/bin/bash
+# vpnmap local check: age of the last Remnawave backup (read-only)
+#
+# Uses the modification time of the backup log as "last backup ran" and
+# reports the age in minutes as value: degraded above 35 min, down above
+# 45 min (backups run every 30 min). A last line that mentions an error makes
+# the check at least degraded. The last line is included in detail (the
+# helper redacts it).
+#
+#   {"status":"ok|degraded|down","value":<age minutes>,"detail":"...","data":{...}}
+#
+# Install (as root), then list it in agent.yaml:
+#   install -o root -g root -m 0755 remnawave-backup-age.check /etc/vpnmap-agent/checks.d/
+#   checks: [{id: remnawave-backup-age, interval: 60s}]
+set -u
+
+# VPNMAP_BACKUP_LOG only exists for tests: the helper clears the environment.
+LOG=${VPNMAP_BACKUP_LOG:-/opt/remnawave-backup/backup.log}
+DEGRADED_MIN=35
+DOWN_MIN=45
+
+json_str() {
+	local s=$1
+	s=${s//\\/\\\\}
+	s=${s//\"/\\\"}
+	s=${s//$'\t'/\\t}
+	s=${s//$'\r'/\\r}
+	s=${s//$'\n'/\\n}
+	printf '"%s"' "$(printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037')"
+}
+
+if [ ! -f "$LOG" ]; then
+	printf '{"status":"down","detail":%s}\n' "$(json_str "$LOG not found")"
+	exit 0
+fi
+
+mtime=$(stat -c %Y -- "$LOG")
+now=$(date +%s)
+age=$(((now - mtime) / 60))
+[ "$age" -lt 0 ] && age=0
+last=$(tail -n 1 -- "$LOG" | cut -c1-200)
+
+if [ "$age" -gt "$DOWN_MIN" ]; then
+	status=down
+elif [ "$age" -gt "$DEGRADED_MIN" ]; then
+	status=degraded
+else
+	status=ok
+fi
+if [ "$status" = ok ] && printf '%s' "$last" | grep -qiE '(error|fail)'; then
+	status=degraded
+fi
+
+printf '{"status":"%s","value":%d,"detail":%s,"data":{"age_minutes":%d,"last_modified":%d}}\n' \
+	"$status" "$age" "$(json_str "last backup ${age} min ago: $last")" "$age" "$mtime"

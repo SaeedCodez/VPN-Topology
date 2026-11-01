@@ -1,0 +1,78 @@
+# VPN Topology on Coolify (171.22.27.214): hub, web, postgres, victoriametrics.
+# Only `web` is exposed (Coolify's proxy terminates HTTPS for map.imdev.ir).
+# Values come from Coolify env vars; see .env.example for the names.
+name: vpn-topology
+
+x-build-args: &build-args
+  NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+  ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+  GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: apps/hub/Dockerfile
+      args: *build-args
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      victoriametrics: { condition: service_started }
+    environment:
+      HUB_MODE: ${HUB_MODE:-live}
+      PUBLIC_URL: ${PUBLIC_URL:-https://map.imdev.ir}
+      DATABASE_URL: postgres://vpnmap:${POSTGRES_PASSWORD}@postgres:5432/vpnmap
+      VICTORIA_URL: http://victoriametrics:8428
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
+      ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      CLI_TOKEN_SHA256: ${CLI_TOKEN_SHA256}
+      AGENT_TOKENS: ${AGENT_TOKENS}
+      RW_API_URL: ${RW_API_URL:-https://pl.api.mohiraweb.ir}
+      RW_API_TOKEN: ${RW_API_TOKEN}
+      XUI_FRANCE_URL: ${XUI_FRANCE_URL}
+      XUI_FRANCE_USER: ${XUI_FRANCE_USER}
+      XUI_FRANCE_PASS: ${XUI_FRANCE_PASS}
+      TELEGRAM_API_ROOT: ${TELEGRAM_API_ROOT}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    expose: ['4000']
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args: *build-args
+    restart: unless-stopped
+    depends_on: [hub]
+    expose: ['8080']
+    # Coolify: set the domain map.imdev.ir on this service, port 8080.
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vpnmap
+      POSTGRES_USER: vpnmap
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vpnmap -d vpnmap']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    restart: unless-stopped
+    command:
+      - -retentionPeriod=180d
+      - -dedup.minScrapeInterval=10s
+      - -search.latencyOffset=5s
+      - -storageDataPath=/storage
+    volumes: ['vmdata:/storage']
+    expose: ['8428']
+
+volumes:
+  pgdata:
+  vmdata:

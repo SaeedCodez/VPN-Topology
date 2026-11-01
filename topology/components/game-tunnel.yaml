@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../schema/topology.schema.json
+component: game-tunnel
+title: Game tunnel (Xbox → Mullvad DE)
+docs: https://app.notion.com/p/3f828d2a9e9b819d90d8e9173fac68bc   # 01 · Flow E
+description: >-
+  WireGuard wg-game (udp/51821) from the owner's XRouter Raspberry Pi to the
+  Iran-Mullvad node, NATed out through netns mv-de. Only the Xbox uses it.
+  Fails closed: if wg-game or mv-de is down, the Xbox has no internet.
+
+nodes:
+  - id: xrouter-pi
+    name: XRouter Pi
+    kind: router
+    group: home
+    address: [192.168.1.180]
+    role: "Home router; Xbox 10.42.0.124 → table 252 → wg-game"
+    facts:
+      - { label: Tunnel, value: "wg-game 10.250.1.2/24, MTU 1380, keepalive 25" }
+      - { label: Measured, value: "Pi → node 48 ms; → Mullvad DE → 1.1.1.1 ~133 ms" }
+
+links:
+  - id: wg-game
+    label: E9
+    title: XRouter Pi → Iran-Mullvad (wg-game)
+    from: xrouter-pi
+    to: iran-mullvad
+    plane: data
+    protocol: WireGuard udp/51821
+    traffic: { collector: wg-transfer, host: iran-mullvad, interface: wg-game }
+    health: { collector: wg-handshake, host: iran-mullvad, interface: wg-game, max_age: 3m }
+    runbook:
+      - { title: wg-game peer state, cmd: "ssh root@92.42.207.243 'wg show wg-game'" }
+      - { title: Policy rule and table 251, cmd: "ssh root@92.42.207.243 'ip rule show | grep wg-game; ip route show table 251'" }
+
+routes:
+  - id: game
+    title: Game tunnel · Xbox via Mullvad DE
+    hops: [wg-game, e8-de, mv-de-exit]
+    squads: [Xbox]
+    users_estimate: 1
+
+alerts:
+  - id: game-tunnel-down
+    when: "link.wg-game.health == down for 2m"
+    severity: warning
+    title: Game tunnel down
+    message_fa: "تونل بازی قطع است."
+    message_en: "The game tunnel (wg-game) is down."

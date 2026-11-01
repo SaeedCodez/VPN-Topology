@@ -1,0 +1,183 @@
+# VPN Topology
+
+A private, live, n8n-style map of the VPN system: every server is a node card,
+every connection an edge. At a glance it shows what is up, what is down and how
+much traffic flows on each link. When something breaks, it names the first
+broken hop and how many users are affected.
+
+It is **read-only**. Nothing here changes, restarts or reconfigures a VPN
+server. The map is **topology as code**: files in `topology/` describe it, the
+`vpnmap` CLI validates, plans and applies them, and every view on the board is
+also available as CLI output (`--json`) for an agent.
+
+```
+                     topology/*.yaml ──vpnmap validate/plan/apply──┐
+                                                                    ▼
+ servers: vpnmap-agent ──HTTPS push (outbound only)──►  HUB (NestJS)  ◄── Remnawave API, 3x-ui, HTTP/TLS probes
+ probe (Iran): sing-box e2e ─────────────────────────►   resolve → evaluate → root cause → alerts
+                                                          │ Postgres (topology versions, events)
+                                                          │ VictoriaMetrics (10 s, 180 d)
+                                   board (Nuxt) ◄─WS/API──┤
+                                   vpnmap CLI   ◄──API────┘   (MCP server in phase 2)
+```
+
+## Status
+
+| Phase | Item | State |
+|---|---|---|
+| 1 | Topology schema, 6 component files for today's system, `vpnmap validate` (file:line:fix) | done |
+| 1 | Hub: ingest, collector resolvers, evaluation, root cause + blast radius, alert rules, events, time travel, REST + WebSocket, auth (password + TOTP, CLI tokens, per-agent tokens) | done |
+| 1 | Demo mode: simulator that replays the real incidents through the production code path | done |
+| 1 | Board: canvas, node cards, traffic edges, group frames, side panel, timeline + replay slider, light/dark | done |
+| 1 | CLI: status, get, describe, diagnose, path, why, events, metrics, snapshot, plan, apply, history, rollback, layout pull, docs, agent config/nft/token/install-cmd, silence, login, admin hash-password/totp | done |
+| 1 | Agent: unprivileged collector + root helper with fixed read-only ops, counter-only nft table, install/uninstall, probe mode | done, not yet run on a real server |
+| 1 | Live collectors in the hub: Remnawave API, 3x-ui, HTTP/TCP/TLS probes | written, untested against the real APIs |
+| 2 | Telegram delivery (Persian), dedupe, recovery, maintenance mute, external heartbeat; `vpnmap discover`; MCP server | next (alert rules are already evaluated and shown) |
+| 3 | Operational buttons with confirmation and audit log | later |
+
+## Repository
+
+| Path | What |
+|---|---|
+| `topology/` | `map.yaml` (groups, settings, probe source), `components/*.yaml` (one feature each), `layout.yaml` (positions, written via the UI) |
+| `schema/` | JSON schemas generated from `pkg/topology` (editors + agents) |
+| `pkg/topology` | the only YAML loader/validator, collector catalog, alert-expression parser, bundle |
+| `pkg/protocol`, `pkg/agentcfg`, `pkg/redact` | push payload, agent config, redaction |
+| `apps/cli` | `vpnmap` |
+| `apps/agent` | `vpnmap-agent` + `deploy/` (systemd units, install/uninstall, example local checks) — see `apps/agent/README.md` |
+| `apps/hub` | NestJS hub; `src/engine` is pure evaluation logic, `src/sim` the demo simulator |
+| `apps/web` | Nuxt 3 SPA (Vue Flow, Tailwind, ECharts), types from `apps/hub/src/contract.ts` |
+| `CLAUDE.md`, `.claude/skills/` | how an agent works here: `add-component`, `diagnose-outage` |
+
+## How it works
+
+**Pipeline (every 5 s).** Agents push raw facts (host metrics, nft counters,
+`wg show` dumps, `ss` counts, container/unit states, TCP/HTTP results, local
+checks, new log lines, allow-listed Prometheus samples). Hub-side collectors poll
+the Remnawave API, 3x-ui and run HTTP/TLS/TCP probes. Everything lands in one
+store; one resolver per catalog collector turns it into check results; a pure
+evaluator turns check results into the board snapshot. Demo mode feeds the
+same store from a simulator, so the demo exercises the production code.
+
+**Root cause.** Each route (declared in the component files) is walked from the
+users toward the exit; the first failing hop is the root and the hops after it
+are "affected" (unless a healthy route still uses them). A failing link whose
+destination node is also failing (or whose agent went silent) points at the
+node. Users affected = live online users of the broken routes (or the declared
+estimate), deduplicated. Control-plane failures (panel, central, backups) are
+roots of their own and mark the control links they serve.
+
+**Time travel.** Every 10 s the observations are written as series
+(`c:<check>:s|v`, `l:<link>:up|down|conns`, `n:<node>:cpu…`, `r:<route>:…`).
+`--at` / the slider rebuilds the board at that moment by running the same
+evaluator on stored observations; check details and alerts come from events.
+
+**Per-outbound Xray stats (first task: verified).** Remnawave node 3.4.2 always
+enables `statsOutboundUplink/Downlink` and exposes `/node/stats/get-all-outbounds-stats`
+on :2222 (mTLS + JWT from the panel, not usable by us). The backend resets the
+node counters every 30 s and accumulates them in its own Prometheus counters
+`remnawave_node_outbound_upload_bytes` / `..._download_bytes{node_uuid,tag}` on
+`127.0.0.1:3001/metrics` (basic auth `METRICS_USER/PASS`). So `xray-stats`
+is collected by the agent on the panel host scraping that endpoint (only
+allow-listed metric names are forwarded; credentials are a copy in
+`/etc/vpnmap-agent/remnawave-metrics.auth`, the agent never reads `.env`).
+Data arrives in 30 s steps. E3 also declares an nftables fallback
+(`daddr 31.56.89.125 dport 9000` on the panel). Confirm on the live panel:
+
+```bash
+ssh root@81.12.50.23 'curl -s -u "$METRICS_USER:$METRICS_PASS" http://127.0.0.1:3001/metrics | grep -E "^remnawave_node_(outbound_|basic_info)" | head'
+```
+
+Also found: the node's Xray gRPC API listens on an abstract unix socket that any
+local user can reach (`HandlerService` without auth) — worth a look separately.
+
+## Try it with Docker (demo, 1 command)
+
+Simulated data and replays of the real incidents; no servers, no secrets.
+
+```bash
+git clone -b claude/vpn-topology-dashboard-ylokrt https://github.com/SaeedCodez/VPN-Topology.git
+cd VPN-Topology
+docker compose -f docker-compose.demo.yml up --build
+```
+
+- Board: http://localhost:8080 ("Replay incident" plays 2026-10-13 / 2026-10-20 / 2026-10-22 live)
+- CLI without installing Go (the hub image contains `vpnmap`):
+  `docker compose -f docker-compose.demo.yml exec -e VPNMAP_HUB=http://localhost:4000 hub vpnmap status`
+- From Iran, pass mirrors: `NPM_REGISTRY=... ALPINE_MIRROR=... GOPROXY=... docker compose -f docker-compose.demo.yml up --build`
+- Stop: `docker compose -f docker-compose.demo.yml down` (demo data lives in memory and is regenerated on start)
+
+## Running
+
+**Demo without Docker (no servers, no secrets):**
+
+```bash
+pnpm install
+go build -o bin/vpnmap ./apps/cli
+pnpm --filter @vpnmap/hub dev        # :4000, simulates 25 h of history in ~15 s
+pnpm --filter @vpnmap/web dev        # :3000
+VPNMAP_HUB=http://localhost:4000 ./bin/vpnmap status
+```
+
+**Production (Coolify, 171.22.27.214):** `docker-compose.yml` runs `hub`, `web`
+(nginx serving the SPA and proxying `/api`, `/ws`, `/agent` to the hub),
+`postgres` and `victoriametrics` (180 d retention, 10 s dedup). Point the
+domain (map.imdev.ir, to confirm) at `web:8080`. Build args `NPM_REGISTRY`,
+`ALPINE_MIRROR`, `GOPROXY` take the Iranian mirrors. The hub image also
+serves `/agent/install.sh`, `/agent/uninstall.sh` and the agent binaries
+(+ `.sha256`). The e2e probe is **not** in the compose file on purpose: it must
+run on an Iranian server outside the user path (to decide); it is the same
+agent binary with a `probe:` section.
+
+### Environment variables (names only; values in Coolify)
+
+| Name | Purpose |
+|---|---|
+| `HUB_MODE` | `live` or `demo` |
+| `PUBLIC_URL` | e.g. https://map.imdev.ir (enables secure cookies) |
+| `DATABASE_URL` | Postgres (without it: embedded PGlite) |
+| `VICTORIA_URL` | VictoriaMetrics (without it: in-memory, 27 h) |
+| `ADMIN_PASSWORD_HASH`, `ADMIN_TOTP_SECRET`, `SESSION_SECRET` | single admin login (`vpnmap admin hash-password`, `vpnmap admin totp`) |
+| `CLI_TOKEN_SHA256` | sha256 of personal CLI token(s) |
+| `AGENT_TOKENS` | `node=sha256,...` per-agent push tokens (`vpnmap agent token <node>`) |
+| `RW_API_URL`, `RW_API_TOKEN` | Remnawave API, dedicated monitoring user |
+| `XUI_FRANCE_URL`, `XUI_FRANCE_USER`, `XUI_FRANCE_PASS` | 3x-ui on the France exit (inbound list only) |
+| `TELEGRAM_API_ROOT`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | alerts via the Cloudflare Workers proxy (phase 2) |
+| `TOPOLOGY_ROOT`, `VPNMAP_BIN`, `AGENT_DIST_DIR` | set in the image |
+| `NPM_REGISTRY`, `ALPINE_MIRROR`, `GOPROXY` | build mirrors |
+
+## Rollout runbook (the owner runs these; nothing here is run for you)
+
+1. **Backup first** (Notion rule 2), then create the dedicated Remnawave
+   monitoring user and API token; put it in `RW_API_TOKEN`.
+2. Deploy the compose stack on Coolify with `HUB_MODE=live` and the secrets
+   above. First start bootstraps topology v1 from the files in the image.
+3. `vpnmap login --hub https://map.imdev.ir` (personal token; its sha256 goes in `CLI_TOKEN_SHA256`).
+4. Per server (relay-1, panel, xbridger-node-3, iran-mullvad, france-exit, coolify):
+   `vpnmap agent token <node>` (add the hash to `AGENT_TOKENS`), then
+   `vpnmap agent install-cmd <node>` and run what it prints. The installer
+   creates the `vpnmap-agent` user, the counter-only nft table `inet vpnmap`,
+   the helper socket and the service; it restarts nothing else and opens no
+   ports. `vpnmap agent install-cmd` also lists the local checks that node
+   needs (e.g. `xbridger-doctor.check` on node 3, `remnawave-backup-age.check`
+   on the panel) with their install commands.
+5. `vpnmap plan` should then show no missing agents or checks.
+6. Uninstall: the one-liner printed by `install-cmd` (`/agent/uninstall.sh`),
+   which removes the units, the binary, `/etc/vpnmap-agent` and `table inet vpnmap`.
+
+Day to day: `vpnmap status`, `vpnmap diagnose`, the board. Changes to the map:
+see CLAUDE.md (validate → plan → owner approves → apply → docs → Notion).
+
+## Open questions
+
+- **Probe server:** which Iranian server outside the user path runs the e2e probe?
+- **Domain:** map.imdev.ir confirmed?
+- **Coolify location:** if the hub is abroad, hub-side probes see the network
+  from abroad; Iran-side checks come from agents and the probe.
+- **Exact outputs** of `relay-ctl status` and `xbridger doctor --json` (the
+  example local checks parse them best-effort), and the France NIC name (E6
+  assumes `eth0`).
+- **Remnawave API field names** for online users (`/api/system/stats`) are
+  taken from 3.4.x contracts; verify once with the monitoring token.
+- I could not read the XBridger repo's CLAUDE.md files (not reachable from
+  this environment); style follows the stack described in Notion 09.
