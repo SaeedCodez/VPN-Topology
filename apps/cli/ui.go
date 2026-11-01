@@ -77,8 +77,9 @@ func visibleLen(s string) int { return utf8.RuneCountInString(ansi.ReplaceAllStr
 
 // table prints rows with aligned columns (ANSI-aware).
 type table struct {
-	head []string
-	rows [][]string
+	head     []string
+	rows     [][]string
+	hideHead bool
 }
 
 func newTable(head ...string) *table { return &table{head: head} }
@@ -113,7 +114,9 @@ func (t *table) print(w io.Writer) {
 		}
 		fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
 	}
-	line(t.head, dim)
+	if !t.hideHead {
+		line(t.head, dim)
+	}
 	for _, r := range t.rows {
 		line(r, nil)
 	}

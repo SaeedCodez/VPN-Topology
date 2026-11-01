@@ -62,7 +62,7 @@ Every command takes --json; read commands take --at <time> for time travel.`,
 	add("diag", cmdDiagnose(), cmdPath(), cmdWhy())
 	add("change", cmdValidate(), cmdPlan(), cmdApply(), cmdHistory(), cmdRollback(), cmdNew(), cmdLayout(), cmdDocs())
 	add("agents", cmdAgent(), cmdSilence())
-	add("other", cmdExplain(), cmdSchema(), cmdBundle(), cmdLogin(), cmdDemo())
+	add("other", cmdExplain(), cmdSchema(), cmdBundle(), cmdLogin(), cmdDemo(), cmdAdmin())
 	root.SetHelpCommandGroupID("other")
 	root.SetCompletionCommandGroupID("other")
 	return root
