@@ -14,6 +14,9 @@
 #   checks: [{id: relay-forwards, interval: 60s}]
 set -u
 
+# The helper sets only PATH=/usr/sbin:/usr/bin:/sbin:/bin; relay-ctl is in
+# /usr/local/bin.
+PATH=$PATH:/usr/local/sbin:/usr/local/bin
 UNIT=realm.service
 
 json_str() {

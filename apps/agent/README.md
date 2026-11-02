@@ -169,6 +169,9 @@ There are examples in `deploy/checks.d/`:
   forwards the `relay-ctl status` table lists.
 * `remnawave-backup-age.check`: reports the backup age in minutes
   (degraded above 35, down above 45).
+* `rw-api.check`: GETs the panel API on loopback with the reverse-proxy
+  headers Remnawave requires and reports the latency in ms (degraded above
+  2 s, down on a timeout, no answer or a 5xx).
 
 ## Verify
 

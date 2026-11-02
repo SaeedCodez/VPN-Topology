@@ -402,16 +402,7 @@ export class Simulator {
           let status = 200;
           let latency = 40 + 25 * noise(`h:${url}`, t);
           let error: string | undefined;
-          if (url.includes('127.0.0.1:3000')) {
-            status = 200;
-            latency = 18 + 8 * noise('api', t);
-            if (e.rwApiHung) {
-              ok = false;
-              status = 0;
-              latency = 10000;
-              error = 'timeout after 10 s';
-            }
-          } else if (url.includes('wp.api.mohiraweb.ir')) {
+          if (url.includes('wp.api.mohiraweb.ir')) {
             latency = 210 + 60 * noise('wp', t);
             if (e.rwApiHung) {
               ok = false;
@@ -474,6 +465,13 @@ export class Simulator {
             });
           } else if (id === 'relay-forwards') {
             p.checks.push({ id, status: 'ok', value: 9, detail: '9 forwards, realm active (8 point to dead backends, 08 #4)', exit_code: 0, duration_ms: 35, at: ts });
+          } else if (id === 'rw-api') {
+            if (e.rwApiHung) {
+              p.checks.push({ id, status: 'down', detail: 'no answer within 5 s', exit_code: 0, duration_ms: 5000, at: ts });
+            } else {
+              const ms = Math.round(18 + 8 * noise('api', t));
+              p.checks.push({ id, status: 'ok', value: ms, detail: `HTTP 200 in ${ms} ms`, exit_code: 0, duration_ms: ms, at: ts });
+            }
           } else if (id === 'remnawave-backup-age') {
             const age = ((t / 60000) % 30) + 0.6;
             p.checks.push({ id, status: age > 45 ? 'down' : age > 35 ? 'degraded' : 'ok', value: Math.round(age * 10) / 10, detail: `last upload ${Math.round(age)} min ago`, exit_code: 0, duration_ms: 12, at: ts });

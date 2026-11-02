@@ -1,0 +1,46 @@
+#!/bin/bash
+# vpnmap local check: does rw-api answer? (read-only)
+#
+# GETs the panel API on loopback and reports the latency in ms as value:
+# degraded above 2 s; down on a timeout (5 s), no answer or a 5xx. This is a
+# local check rather than an http-probe because Remnawave's ProxyCheckMiddleware
+# resets every request without reverse-proxy headers, and http-probe sends none.
+# The headers only pass that middleware: the request stays on loopback.
+#
+#   {"status":"ok|degraded|down","value":<ms>,"detail":"...","data":{...}}
+#
+# Install (as root), then list it in agent.yaml (`vpnmap agent config` does):
+#   install -o root -g root -m 0755 rw-api.check /etc/vpnmap-agent/checks.d/
+#   checks: [{id: rw-api, interval: 15s}]
+set -u
+
+# VPNMAP_RW_API_URL only exists for tests: the helper clears the environment.
+URL=${VPNMAP_RW_API_URL:-http://127.0.0.1:3000/api/auth/status}
+TIMEOUT_S=5
+SLOW_MS=2000
+
+out=$(curl -s -o /dev/null -m "$TIMEOUT_S" -w '%{http_code} %{time_total}' \
+	-H 'X-Forwarded-For: 127.0.0.1' -H 'X-Forwarded-Proto: https' "$URL" 2>/dev/null)
+rc=$?
+code=${out%% *}
+secs=${out##* }
+
+if [ "$rc" -eq 28 ]; then
+	printf '{"status":"down","detail":"no answer within %d s","data":{"curl_exit":28}}\n' "$TIMEOUT_S"
+	exit 0
+fi
+if [ "$rc" -ne 0 ]; then
+	printf '{"status":"down","detail":"no answer (curl exit %d)","data":{"curl_exit":%d}}\n' "$rc" "$rc"
+	exit 0
+fi
+
+ms=0
+[[ $secs =~ ^[0-9]+\.[0-9]{6}$ ]] && ms=$((10#${secs/./} / 1000))
+case $code in
+2?? | 4??) status=ok ;;
+*) status=down ;;
+esac
+[ "$status" = ok ] && [ "$ms" -gt "$SLOW_MS" ] && status=degraded
+
+printf '{"status":"%s","value":%d,"detail":"HTTP %s in %d ms","data":{"http_code":"%s"}}\n' \
+	"$status" "$ms" "$code" "$ms" "$code"
