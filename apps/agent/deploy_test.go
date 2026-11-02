@@ -290,6 +290,48 @@ func TestRelayForwardsRealTable(t *testing.T) {
 	}
 }
 
+func TestRwAPICheck(t *testing.T) {
+	// The fake reset matches Remnawave: no proxy headers, no answer.
+	fake := fakeTools(t, map[string]string{"curl": `case "$*" in
+*"X-Forwarded-For: 127.0.0.1"*"X-Forwarded-Proto: https"*) ;;
+*) exit 52 ;;
+esac
+[ "$FAKE_RC" = 0 ] || exit "$FAKE_RC"
+printf '%s' "$FAKE_OUT"`})
+	path := fake + ":" + minimalPath(t, coreTools...)
+	for _, c := range []struct {
+		out, rc, status, detail string
+	}{
+		{"200 0.007203", "0", "ok", "HTTP 200 in 7 ms"},
+		{"401 0.012000", "0", "ok", "HTTP 401 in 12 ms"},
+		{"200 2.500000", "0", "degraded", "HTTP 200 in 2500 ms"},
+		{"502 0.010000", "0", "down", "HTTP 502 in 10 ms"},
+		{"000 5.001000", "28", "down", "no answer within 5 s"},
+		{"000 0.002000", "52", "down", "no answer (curl exit 52)"},
+	} {
+		m, status := runCheckScript(t, "rw-api", path, "FAKE_OUT="+c.out, "FAKE_RC="+c.rc)
+		if status != c.status || m["detail"] != c.detail {
+			t.Errorf("%+v: %s %v", c, status, m)
+		}
+	}
+}
+
+// The helper's PATH has no /usr/local/bin, where relay-ctl lives.
+func TestRelayForwardsFindsRelayCtl(t *testing.T) {
+	fake := fakeTools(t, map[string]string{"systemctl": `echo active`})
+	script, err := os.ReadFile("deploy/checks.d/relay-forwards.check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(script), "PATH=$PATH:/usr/local/sbin:/usr/local/bin\n") {
+		t.Fatal("relay-forwards.check must add /usr/local/bin to the helper's PATH")
+	}
+	path := fake + ":" + minimalPath(t, coreTools...)
+	if m, status := runCheckScript(t, "relay-forwards", path); status != "ok" {
+		t.Errorf("%v", m)
+	}
+}
+
 func TestRemnawaveBackupAgeCheck(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "backup.log")
 	path := minimalPath(t, coreTools...)

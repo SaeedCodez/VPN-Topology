@@ -103,13 +103,13 @@ func TestAgentConfigPanel(t *testing.T) {
 	if fb == nil || fb.Saddr != "31.56.89.125" || fb.Sport != 9000 || fb.Hook != "input" {
 		t.Errorf("e3 fallback down = %+v", fb)
 	}
-	if len(cfg.HTTP) != 1 || cfg.HTTP[0].ID != "node-panel-api" || cfg.HTTP[0].URL != "http://127.0.0.1:3000/api/auth/status" || cfg.HTTP[0].Timeout.D().Seconds() != 5 {
+	if len(cfg.HTTP) != 0 {
 		t.Errorf("http = %+v", cfg.HTTP)
 	}
 	if len(cfg.Logs) != 1 || cfg.Logs[0].ID != "node-panel-watchdog" || cfg.Logs[0].Path != "/var/log/remnawave-watchdog.log" || cfg.Logs[0].Match != "" {
 		t.Errorf("logs = %+v", cfg.Logs)
 	}
-	if !reflect.DeepEqual(LocalCheckIDs(cfg), []string{"remnawave-backup-age"}) || cfg.Checks[0].Interval.D().Minutes() != 1 {
+	if !reflect.DeepEqual(LocalCheckIDs(cfg), []string{"remnawave-backup-age", "rw-api"}) || cfg.Checks[0].Interval.D().Minutes() != 1 || cfg.Checks[1].Interval.D().Seconds() != 15 {
 		t.Errorf("checks = %+v", cfg.Checks)
 	}
 	if len(cfg.TCP) != 1 || cfg.TCP[0].Target != "31.56.89.125:9000" {

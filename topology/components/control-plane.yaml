@@ -25,7 +25,8 @@ nodes:
       - { label: Watchdog, value: "/opt/remnawave-watchdog/watchdog.sh, every minute, 10 min cooldown" }
       - { label: Firewall, value: "UFW inactive; 2222 open to the internet (08 #3)" }
     checks:
-      - { id: api, title: rw-api answers, collector: http-probe, from: panel, url: "http://127.0.0.1:3000/api/auth/status", max_latency: 5s, slow: 2s, expect: "2xx,4xx", interval: 15s }
+      # A local check, not http-probe: Remnawave resets requests without reverse-proxy headers.
+      - { id: api, title: rw-api answers, collector: local-check, host: panel, check: rw-api, interval: 15s }
       - { id: backend, collector: docker-container, host: panel, container: remnawave }
       - { id: db, collector: docker-container, host: panel, container: remnawave-db }
       - { id: redis, collector: docker-container, host: panel, container: remnawave-redis }
