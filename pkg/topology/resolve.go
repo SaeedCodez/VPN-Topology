@@ -401,8 +401,8 @@ func (c *checkCtx) resolveCheck(ch *Check, owner, nodeID, linkID, usage string, 
 		if (ch.Str("outbound") == "") == (ch.Str("inbound") == "") {
 			at("set exactly one of `outbound:` or `inbound:`", "xray-stats needs an outbound or an inbound tag")
 		}
-	case "wg-transfer", "nft-counter":
-		if linkID != "" && ch.Collector == "wg-transfer" && ch.Str("up") == "" {
+	case "wg-transfer", "nft-counter", "nic-counter":
+		if linkID != "" && (ch.Collector == "wg-transfer" || ch.Collector == "nic-counter") && ch.Str("up") == "" {
 			l := c.b.LinkByID(linkID)
 			if l != nil && ch.Str("host") != l.From && ch.Str("host") != l.To {
 				at("set `up: rx` or `up: tx`", "host %q is neither end of link %q, so the direction cannot be inferred", ch.Str("host"), linkID)

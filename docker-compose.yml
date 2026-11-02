@@ -7,6 +7,8 @@ x-build-args: &build-args
   NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
   ALPINE_MIRROR: ${ALPINE_MIRROR:-}
   GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+  # Coolify passes the deployed commit; agents and the CLI then report it as their version.
+  VERSION: ${SOURCE_COMMIT:-dev}
 
 services:
   hub:

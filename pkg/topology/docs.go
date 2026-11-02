@@ -328,6 +328,8 @@ func CheckSummary(c *Check) string {
 		if side := c.Str("side"); side == "remote" {
 			s += " (remote)"
 		}
+	case "nic-counter":
+		s += at() + " " + firstNonEmptyStr(c.Str("interface"), "*")
 	case "wg-transfer", "wg-handshake":
 		iface := c.Str("interface")
 		if ns := c.Str("netns"); ns != "" {

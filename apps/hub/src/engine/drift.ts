@@ -6,7 +6,7 @@ import { LatestStore } from './store';
  * The hub never invents topology; it lists these so `vpnmap discover` (phase 2)
  * can draft YAML and the board can show ghost nodes and a drift badge.
  */
-export function computeDrift(b: Bundle, s: LatestStore): DriftItem[] {
+export function computeDrift(b: Bundle, s: LatestStore, now = Date.now()): DriftItem[] {
   const out: DriftItem[] = [];
   const known = new Set(b.nodes.map((n) => n.id));
   const sources = new Set(['probe', ...(b.map.sources ?? []).map((x) => x.id)]);
@@ -20,7 +20,11 @@ export function computeDrift(b: Bundle, s: LatestStore): DriftItem[] {
     const a = s.agents.get(n.id);
     if (!a) continue;
     const declared = declaredPorts(b, n.id);
-    const undeclared = (a.push.agent.capabilities.listening ?? []).filter((p) => !declared.has(p));
+    const ranges = declaredRanges(b, n.id);
+    const since = s.listenSince.get(n.id);
+    const undeclared = (a.push.agent.capabilities.listening ?? []).filter(
+      (p) => !declared.has(p) && !inRanges(p, ranges) && !ignoredSocket(p, now - (since?.get(p) ?? now)),
+    );
     if (undeclared.length) {
       out.push({
         kind: 'port',
@@ -34,11 +38,48 @@ export function computeDrift(b: Bundle, s: LatestStore): DriftItem[] {
   return out;
 }
 
+/**
+ * Sockets that are not services: the DHCP client, and unconnected UDP client
+ * sockets (DNS resolvers, Xray UDP relays) on ephemeral ports (32768-60999),
+ * which come and go. A UDP port in that range counts only after it has been
+ * listening for 15 minutes, so a real service there (WireGuard's 51820) still
+ * shows up.
+ */
+export const EPHEMERAL_UDP_GRACE_MS = 15 * 60_000;
+
+export function ignoredSocket(p: string, ageMs = 0): boolean {
+  const [proto, port] = p.split('/');
+  const n = Number(port);
+  if (proto !== 'udp') return false;
+  if (n === 68) return true;
+  return n >= 32768 && n <= 60999 && ageMs < EPHEMERAL_UDP_GRACE_MS;
+}
+
+/** Ranges from node `listens:` ("tcp/8000-8100"); single ports are in declaredPorts. */
+function declaredRanges(b: Bundle, host: string): { proto: string; from: number; to: number }[] {
+  const out: { proto: string; from: number; to: number }[] = [];
+  for (const n of b.nodes) {
+    if (n.id !== host) continue;
+    for (const l of n.listens ?? []) {
+      const m = /^(tcp|udp)\/(\d+)-(\d+)$/.exec(l);
+      if (m) out.push({ proto: m[1], from: Number(m[2]), to: Number(m[3]) });
+    }
+  }
+  return out;
+}
+
+function inRanges(p: string, ranges: { proto: string; from: number; to: number }[]): boolean {
+  const [proto, port] = p.split('/');
+  const n = Number(port);
+  return ranges.some((r) => r.proto === proto && n >= r.from && n <= r.to);
+}
+
 const portRe = /(tcp|udp)\/(\d{1,5})|:(\d{2,5})\b/g;
 
 /** Ports a host is known to serve, from checks and link/role text. */
 export function declaredPorts(b: Bundle, host: string): Set<string> {
   const ports = new Set<string>(['tcp/22']);
+  for (const l of b.nodes.find((n) => n.id === host)?.listens ?? []) if (!l.includes('-')) ports.add(l);
   const colocated = new Set([host]);
   for (const n of b.nodes) {
     if (n.agent) continue;

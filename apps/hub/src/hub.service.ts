@@ -174,7 +174,7 @@ export class HubService {
     this.activeAlerts = active;
     draft.alerts = active;
     draft.overall.activeAlerts = active.filter((a) => !a.silencedUntil).length;
-    draft.drift = computeDrift(this.bundle, this.store);
+    draft.drift = computeDrift(this.bundle, this.store, now);
     this.diff(draft, obs, now);
     for (const t of transitions) {
       const id = `${t.alert.id}|${t.instance.key}`;

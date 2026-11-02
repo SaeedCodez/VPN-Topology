@@ -11,6 +11,7 @@ import { AlertEngine } from '../engine/alerts';
 import { Simulator } from '../sim/simulator';
 import { nftName, ssId, slug } from '../engine/ids';
 import { parseAt } from '../api/api.controller';
+import { computeDrift, ignoredSocket } from '../engine/drift';
 import { toRemnawaveNode } from '../engine/remnawave';
 
 /**
@@ -116,6 +117,29 @@ test('a probe that cannot start its own client is "no data", not a broken route'
   assert.equal(store.probes.get('main')!.failures, 0);
   const obs = observe(b, store, Date.now());
   assert.equal(obs.checks['route:main:probe'].status, 'unknown');
+});
+
+test('E6 traffic comes from the France NIC counters (no nft needed)', () => {
+  const s = run(null, 5);
+  assert.ok(s.links.e6.downBps > 0 || s.links.e6.upBps > 0);
+  assert.equal(s.links.e6.trafficSource, 'primary');
+});
+
+test('drift ignores ephemeral UDP client sockets, DHCP and declared port ranges', () => {
+  assert.equal(ignoredSocket('udp/45000', 60_000), true, 'fresh ephemeral UDP client socket');
+  assert.equal(ignoredSocket('udp/45000', 20 * 60_000), false, 'still there after 15 min: a service');
+  assert.equal(ignoredSocket('udp/68', 1e9), true);
+  assert.equal(ignoredSocket('tcp/45000'), false);
+  const store = new LatestStore();
+  const t0 = Date.now() - 30 * 60_000;
+  const push = (listening: string[], at: number) =>
+    store.ingest({ v: 1, agent: { node: 'xbridger-node-3', kind: 'agent', version: 't', hostname: 'h', config_sha: '', capabilities: { listening } }, ts: new Date(at).toISOString(), seq: 1 }, at);
+  push(['tcp/22', 'tcp/80', 'tcp/443', 'tcp/8042', 'tcp/9050', 'udp/51820'], t0);
+  push(['tcp/22', 'tcp/80', 'tcp/443', 'tcp/8042', 'tcp/9050', 'udp/51820', 'udp/40000'], Date.now() - 1000);
+  const d = computeDrift(b, store).find((x) => x.host === 'xbridger-node-3')!;
+  // 80 and the 8000-8100 / 9000-9100 ranges are declared; 443 (legacy realm, 08 #17) and the
+  // long-lived WireGuard port are not; the fresh udp/40000 client socket is ignored.
+  assert.equal(d.detail, 'tcp/443, udp/51820');
 });
 
 test('time parsing for --at', () => {

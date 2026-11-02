@@ -318,6 +318,7 @@ const resolvers: Record<string, Resolver> = {
   'nft-counter': (c, ctx) => trafficObs(c, ctx),
   'wg-transfer': (c, ctx) => trafficObs(c, ctx),
   'xray-stats': (c, ctx) => trafficObs(c, ctx),
+  'nic-counter': (c, ctx) => trafficObs(c, ctx),
 };
 
 function trafficObs(c: CheckSpec, ctx: ResolveCtx): CheckObs {
@@ -335,6 +336,16 @@ export function traffic(c: CheckSpec, ctx: ResolveCtx, link: TopoLink | undefine
       const down = c.params.down ? ctx.s.rate(`nft:${host}:${nftName(c.key, 'down')}`, ctx.now) : null;
       if (up === null && down === null) return null;
       return { up, down };
+    }
+    case 'nic-counter': {
+      const iface = c.params.interface ?? '*';
+      const rx = ctx.s.rate(`nic:${host}:${iface}:rx`, ctx.now);
+      const tx = ctx.s.rate(`nic:${host}:${iface}:tx`, ctx.now);
+      if (rx === null && tx === null) return null;
+      let upIsTx = true;
+      if (c.params.up) upIsTx = c.params.up === 'tx';
+      else if (link) upIsTx = host === link.from;
+      return upIsTx ? { up: tx, down: rx } : { up: rx, down: tx };
     }
     case 'wg-transfer': {
       const id = `${c.params.netns ?? ''}/${c.params.interface}`;
@@ -396,7 +407,7 @@ export function observe(b: Bundle, s: LatestStore, now: number): Observations {
     for (const m of n.metrics ?? []) {
       const r = resolveCheck(m, ctx);
       obs.checks[m.key] = r;
-      if (['nft-counter', 'wg-transfer', 'xray-stats'].includes(m.collector)) {
+      if (['nft-counter', 'wg-transfer', 'xray-stats', 'nic-counter'].includes(m.collector)) {
         const t = traffic(m, ctx, undefined);
         obs.metrics[m.key] = t ? (t.up ?? 0) + (t.down ?? 0) : null;
       } else obs.metrics[m.key] = r.value;

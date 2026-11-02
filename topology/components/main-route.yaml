@@ -86,6 +86,7 @@ nodes:
       - { id: api, title: Node API via Arvan CDN, collector: http-probe, from: hub, url: "https://node3.xbridger.imdev.ir/graphql", expect: "2xx,4xx", on_fail: degraded }
     metrics:
       - { id: conns, label: Conns, collector: ss-conns, host: xbridger-node-3, port: 9000 }
+    listens: [tcp/80, tcp/8000-8100, tcp/9000-9100]   # node API; ports published for XBridger connections (only 9000 used)
     card: [connection, conns, cpu]
     runbook:
       - { title: XBridger doctor, cmd: "ssh root@31.56.89.125 'docker exec backend-app-1 xbridger doctor'" }
@@ -100,7 +101,9 @@ nodes:
     role: "Path from XBridger to France: dial chatgpt.com:443, SNI pnl-1.sirparzhak.xyz"
     docs: https://app.notion.com/p/3f828d2a9e9b815a870dc44ba30e71e8
     checks:
-      - { id: tls, collector: tls-expiry, host: pnl-1.sirparzhak.xyz }
+      # Same path as XBridger: connect to chatgpt.com (Cloudflare) with SNI pnl-1.
+      # The name itself is DNS-only and does not serve this certificate directly.
+      - { id: tls, collector: tls-expiry, host: pnl-1.sirparzhak.xyz, connect: chatgpt.com }
 
   - id: france-exit
     name: France exit
@@ -116,6 +119,7 @@ nodes:
       - { label: Inbound, value: "Cloudflare-WS (pnl-1.sirparzhak.xyz, path /wp-json)" }
     checks:
       - { id: x-ui, collector: systemd-unit, host: france-exit, unit: x-ui.service }
+    listens: [tcp/2096, tcp/57111]   # 3x-ui subscription service and web panel (01 port matrix)
     card: [cpu, disk, net]
     runbook:
       - { title: x-ui status and disk, cmd: "ssh root@188.130.207.152 'systemctl is-active x-ui; df -h /'" }
@@ -208,8 +212,9 @@ links:
     to: internet
     plane: data
     protocol: egress
-    traffic: { collector: nft-counter, host: france-exit, up: { hook: output, oif: eth0 }, down: { hook: input, iif: eth0 } }
-    notes: "NIC counters; the interface name eth0 is UNVERIFIED (check with `ip -br link`). The route probe checks that the exit IP is French."
+    # NIC counters (nft cannot be installed on France while dpkg is locked).
+    traffic: { collector: nic-counter, host: france-exit }
+    notes: "All traffic of the France NIC(s); the route probe checks that the exit IP is French."
 
 routes:
   - id: main

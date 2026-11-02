@@ -34,6 +34,7 @@ nodes:
       - { id: watchdog, title: Watchdog restarts, collector: log-match, host: panel, path: /var/log/remnawave-watchdog.log, pattern: "(?i)restart", mode: event, event: watchdog restarted remnawave }
     metrics:
       - { id: online, label: Online, collector: remnawave-online }
+    listens: [tcp/80]   # remnawave-nginx (HTTP)
     card: [api, cpu, mem]
     runbook:
       - { title: Containers and last backup, cmd: "ssh root@81.12.50.23 'docker ps --format \"table {{.Names}}\\t{{.Status}}\"; tail -3 /opt/remnawave-backup/backup.log'" }
@@ -55,6 +56,7 @@ nodes:
     checks:
       - { id: central-api, title: XBridger central API, collector: http-probe, from: hub, url: "https://api.xbridger.imdev.ir/graphql", expect: "2xx,4xx" }
       - { id: web, title: XBridger web UI, collector: http-probe, from: hub, url: "https://xbridger.imdev.ir/", on_fail: degraded }
+    listens: [tcp/80, tcp/443, udp/443, tcp/8080]   # Coolify proxy (HTTP/HTTPS/HTTP3) and dashboard
     card: [cpu, mem, disk]
 
   - id: arvan-s3
