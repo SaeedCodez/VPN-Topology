@@ -99,6 +99,10 @@ type HTTPTarget struct {
 	URL      string   `yaml:"url" json:"url"`
 	Interval Duration `yaml:"interval,omitempty" json:"interval,omitempty"`
 	Timeout  Duration `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	// PathFile names a file on this server whose contents are appended to URL
+	// when requesting, so a credential in the path never reaches the config,
+	// the push or the hub. Without the file the check reports no data.
+	PathFile string `yaml:"path_file,omitempty" json:"path_file,omitempty"`
 }
 
 // LogConfig tails a log file and sends new lines (redacted).
@@ -240,6 +244,9 @@ func (c *Config) Validate() error {
 	for _, h := range c.HTTP {
 		if u, err := url.Parse(h.URL); !reID.MatchString(h.ID) || err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
 			add("http %q: needs an id and an http(s) URL", h.ID)
+		}
+		if h.PathFile != "" && !strings.HasPrefix(h.PathFile, "/") {
+			add("http %q: path_file must be an absolute path", h.ID)
 		}
 	}
 	for _, l := range c.Logs {

@@ -9,6 +9,7 @@
 #   PROBE_HUB_URL            hub URL (default: settings.hub of the topology)
 #   PROBE_OUTBOUND_<ROUTE>   sing-box outbound JSON of the monitoring user for a route,
 #                            e.g. PROBE_OUTBOUND_MAIN, PROBE_OUTBOUND_MULLVAD_DE
+#   PROBE_SUBSCRIPTION_ID    shortUuid of the monitoring user, for the subscription route
 #   PROBE_CHECK_ONLY=1       write and validate the config, then exit (for testing)
 #
 # A route without an outbound reports "no data" (grey), never a false outage.
@@ -39,6 +40,12 @@ for route in $(sed -n 's/^ *- route: *//p' "$ETC/agent.yaml"); do
 		missing="$missing $var"
 	fi
 done
+if [ -n "${PROBE_SUBSCRIPTION_ID:-}" ]; then
+	printf '%s' "$PROBE_SUBSCRIPTION_ID" > "$ETC/probe/subscription-id"
+else
+	rm -f "$ETC/probe/subscription-id"
+	missing="$missing PROBE_SUBSCRIPTION_ID"
+fi
 [ -z "$missing" ] || echo "probe: not set:$missing (those routes report 'no data' until you add them)"
 
 vpnmap-agent check-config --config "$ETC/agent.yaml"

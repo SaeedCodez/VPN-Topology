@@ -11,6 +11,7 @@ import { AlertEngine } from '../engine/alerts';
 import { Simulator } from '../sim/simulator';
 import { nftName, ssId, slug } from '../engine/ids';
 import { parseAt } from '../api/api.controller';
+import { toRemnawaveNode } from '../engine/remnawave';
 
 /**
  * Regression tests for the evaluation pipeline: the simulator replays the
@@ -122,4 +123,22 @@ test('time parsing for --at', () => {
   assert.equal(parseAt('2026-10-22T02:03Z'), Date.UTC(2026, 9, 22, 2, 3));
   const rel = parseAt('-2h')!;
   assert.ok(Math.abs(Date.now() - 2 * 3_600_000 - rel) < 1000);
+});
+
+test('Remnawave 3.4 node fields', () => {
+  // Shape seen on panel 3.4.5: no isNodeOnline, isXrayRunning or xrayVersion.
+  const live = { uuid: 'u', name: 'Local-Node', isConnected: true, isDisabled: false, xrayUptime: 1122998, versions: { xray: '26.7.28', node: '3.4.2' }, usersOnline: 12 };
+  const up = toRemnawaveNode(live);
+  assert.ok(up.isConnected && up.isNodeOnline && up.isXrayRunning);
+  assert.equal(up.xrayUptime, 1122998);
+  assert.equal(up.lastStatusMessage, null);
+
+  const noXray = toRemnawaveNode({ ...live, xrayUptime: 0 });
+  assert.equal(noXray.isXrayRunning, false);
+  assert.equal(toRemnawaveNode({ ...live, isConnected: false }).isNodeOnline, false);
+
+  // Older panels: their own fields win.
+  assert.equal(toRemnawaveNode({ ...live, isXrayRunning: false }).isXrayRunning, false);
+  assert.equal(toRemnawaveNode({ ...live, isNodeOnline: false }).isNodeOnline, false);
+  assert.equal(toRemnawaveNode({ isConnected: true, xrayVersion: '25.1.1' }).isXrayRunning, true);
 });

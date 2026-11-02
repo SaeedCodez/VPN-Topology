@@ -3,6 +3,7 @@ import * as tls from 'tls';
 import { Bundle, CheckSpec } from '../contract';
 import { Config } from '../config';
 import { LatestStore } from '../engine/store';
+import { toRemnawaveNode } from '../engine/remnawave';
 
 /**
  * Collectors that run inside the hub in live mode. All of them are read-only:
@@ -54,17 +55,7 @@ export class LiveCollectors {
         at,
         ok: true,
         onlineNow,
-        nodes: (nodes ?? []).map((n: any) => ({
-          uuid: n.uuid,
-          name: n.name,
-          isConnected: !!n.isConnected,
-          isNodeOnline: !!n.isNodeOnline,
-          isXrayRunning: n.isXrayRunning ?? !!n.xrayVersion,
-          isDisabled: !!n.isDisabled,
-          lastStatusMessage: n.lastStatusMessage ?? null,
-          xrayUptime: Number(n.xrayUptime ?? 0),
-          usersOnline: Number(n.usersOnline ?? 0),
-        })),
+        nodes: (nodes ?? []).map(toRemnawaveNode),
       };
     } catch (e: any) {
       this.store.remnawave = { at, ok: false, error: e?.name === 'TimeoutError' ? 'timeout after 10 s' : String(e?.message ?? e), nodes: this.store.remnawave?.nodes ?? [], onlineNow: null };

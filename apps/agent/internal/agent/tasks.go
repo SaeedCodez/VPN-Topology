@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"vpnmap/apps/agent/internal/collect"
@@ -11,6 +13,27 @@ import (
 	"vpnmap/pkg/agentcfg"
 	"vpnmap/pkg/protocol"
 )
+
+// checkHTTP requests h and, with PathFile, keeps that file's contents on this
+// server: the result carries only the configured URL, and they are scrubbed
+// from error text. A missing file is an error, so the hub shows no data.
+func checkHTTP(ctx context.Context, c *collect.HTTPChecker, h agentcfg.HTTPTarget, timeout time.Duration) (protocol.HTTPResult, error) {
+	if h.PathFile == "" {
+		return c.Check(ctx, h.ID, h.URL, timeout), nil
+	}
+	b, err := os.ReadFile(h.PathFile)
+	if err != nil {
+		return protocol.HTTPResult{}, err
+	}
+	path := strings.TrimSpace(string(b))
+	if path == "" {
+		return protocol.HTTPResult{}, fmt.Errorf("%s is empty", h.PathFile)
+	}
+	r := c.Check(ctx, h.ID, h.URL+path, timeout)
+	r.URL = h.URL
+	r.Error = strings.ReplaceAll(r.Error, path, "***")
+	return r, nil
+}
 
 // DefaultPeriodic is the interval of the slower collectors (docker, tcp,
 // http, checks, prom) when the config does not set one.
@@ -116,7 +139,10 @@ func (a *Agent) periodicTasks() []task {
 		timeout := orDefault(h.Timeout, 10*time.Second)
 		ts = append(ts, task{name: "http:" + h.ID, interval: orDefault(h.Interval, DefaultPeriodic), timeout: timeout + time.Second,
 			run: func(ctx context.Context) (func(*protocol.Push), error) {
-				r := a.httpc.Check(ctx, h.ID, h.URL, timeout)
+				r, err := checkHTTP(ctx, a.httpc, h, timeout)
+				if err != nil {
+					return func(*protocol.Push) {}, err
+				}
 				return func(p *protocol.Push) { p.HTTP = append(p.HTTP, r) }, nil
 			}})
 	}

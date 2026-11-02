@@ -269,6 +269,7 @@ func (g *gen) add(c *Check, node string) error {
 			URL:      c.Str("url"),
 			Interval: agentcfg.Duration(c.Dur("interval", 30*time.Second)),
 			Timeout:  agentcfg.Duration(c.Dur("max_latency", 10*time.Second)),
+			PathFile: c.Str("path_file"),
 		}
 		g.http[h.ID] = h
 	case "log-match":

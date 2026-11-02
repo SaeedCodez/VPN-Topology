@@ -145,7 +145,7 @@ serves `/agent/install.sh`, `/agent/uninstall.sh` and the agent binaries
 | `AGENT_TOKENS` | `node=sha256,...` per-agent push tokens (`vpnmap agent token <node>`) |
 | `RW_API_URL`, `RW_API_TOKEN` | Remnawave API, dedicated monitoring user |
 | `XUI_FRANCE_URL`, `XUI_FRANCE_USER`, `XUI_FRANCE_PASS` | 3x-ui on the France exit (inbound list only) |
-| `PROBE_TOKEN`, `PROBE_OUTBOUND_MAIN`, `PROBE_OUTBOUND_MULLVAD_DE/US/TR` | probe container: push token and the monitoring user's sing-box outbounds |
+| `PROBE_TOKEN`, `PROBE_OUTBOUND_MAIN`, `PROBE_OUTBOUND_MULLVAD_DE/US/TR`, `PROBE_SUBSCRIPTION_ID` | probe container: push token, and the monitoring user's sing-box outbounds and shortUuid |
 | `TELEGRAM_API_ROOT`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | alerts via the Cloudflare Workers proxy (phase 2) |
 | `TOPOLOGY_ROOT`, `VPNMAP_BIN`, `AGENT_DIST_DIR` | set in the image |
 | `NPM_REGISTRY`, `ALPINE_MIRROR`, `GOPROXY` | build mirrors |
@@ -196,6 +196,9 @@ Setup (owner):
    `PROBE_OUTBOUND_MULLVAD_US`, `PROBE_OUTBOUND_MULLVAD_TR`.
 4. `vpnmap agent token probe`: the token goes in `PROBE_TOKEN`, the printed
    `probe=<sha256>` is appended to `AGENT_TOKENS`.
+5. Put the user's `shortUuid` in `PROBE_SUBSCRIPTION_ID`: the subscription route
+   fetches its real subscription, because every other path on that host answers
+   502 by design. Without it the route shows "no data".
 
 The container generates its agent config from the topology in the image, so
 new routes with a probe are picked up on the next deploy. A route without an
@@ -210,7 +213,5 @@ probe's own client fails.
 - **Exact outputs** of `relay-ctl status` and `xbridger doctor --json` (the
   example local checks parse them best-effort), and the France NIC name (E6
   assumes `eth0`).
-- **Remnawave API field names** for online users (`/api/system/stats`) are
-  taken from 3.4.x contracts; verify once with the monitoring token.
 - I could not read the XBridger repo's CLAUDE.md files (not reachable from
   this environment); style follows the stack described in Notion 09.

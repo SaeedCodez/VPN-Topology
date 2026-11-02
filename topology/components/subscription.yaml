@@ -49,8 +49,12 @@ routes:
     hops: [c4a, c4b]
     users_estimate: 1828
     impact: degraded
-    # End-to-end: a subscription URL through the CDN must not answer 5xx.
-    probe: { collector: http-probe, from: probe, url: "https://wp.api.mohiraweb.ir/", expect: "2xx,3xx,4xx", max_latency: 10s }
+    # End-to-end: the monitoring user's real subscription through the CDN. Any
+    # other path gets the connection closed by the subscription page, which
+    # nginx turns into a 502, so it proves nothing. The id is a credential: it
+    # comes from PROBE_SUBSCRIPTION_ID, never from this file. Each request
+    # reaches the panel API, hence the slower interval.
+    probe: { collector: http-probe, from: probe, url: "https://wp.api.mohiraweb.ir/api/sub/", path_file: /etc/vpnmap-agent/probe/subscription-id, expect: "2xx", max_latency: 10s, interval: 60s }
 
 alerts:
   - id: tls-expiring

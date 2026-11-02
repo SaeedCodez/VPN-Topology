@@ -101,6 +101,7 @@ var Catalog = []CollectorInfo{
 		Params: []Param{
 			{Name: "from", Type: PFrom, Default: "hub", Doc: "Where the request is made from."},
 			{Name: "url", Type: PURL, Required: true, Doc: "URL to GET (read-only endpoints only)."},
+			{Name: "path_file", Type: PString, Doc: "Agents and the probe only: absolute path of a local file whose contents are appended to url, for a credential in the path. Its contents never reach the files or the hub; without the file the check shows no data."},
 			{Name: "expect", Type: PString, Default: "2xx,3xx", Doc: "Accepted status codes: \"200\", \"2xx\", \"2xx,401\"."},
 			{Name: "max_latency", Type: PDuration, Default: "10s", Doc: "Slower than this = failed."},
 			{Name: "slow", Type: PDuration, Doc: "Slower than this = degraded."},

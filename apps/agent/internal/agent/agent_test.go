@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"vpnmap/apps/agent/internal/collect"
 	"vpnmap/apps/agent/internal/helper"
 	"vpnmap/apps/agent/internal/procfs"
 	"vpnmap/apps/agent/internal/push"
@@ -330,5 +334,49 @@ func TestStoreFillOrderAndErrors(t *testing.T) {
 	last := p.Errors[len(p.Errors)-1].Error
 	if strings.Contains(last, "\n") || len(last) > maxErrorLen+3 || !strings.HasPrefix(last, "one; ") {
 		t.Errorf("error formatting %q", last)
+	}
+}
+
+func TestHTTPPathFileStaysLocal(t *testing.T) {
+	const secret = "s3cr3t-short-uuid"
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { got = r.URL.Path }))
+	defer srv.Close()
+	file := filepath.Join(t.TempDir(), "id")
+	if err := os.WriteFile(file, []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := &collect.HTTPChecker{UserAgent: "vpnmap-agent/test"}
+	h := agentcfg.HTTPTarget{ID: "sub", URL: srv.URL + "/api/sub/", PathFile: file}
+
+	r, err := checkHTTP(context.Background(), c, h, time.Second)
+	if err != nil || !r.OK {
+		t.Fatalf("r=%+v err=%v", r, err)
+	}
+	if got != "/api/sub/"+secret {
+		t.Errorf("requested %q", got)
+	}
+	if r.URL != h.URL {
+		t.Errorf("result carries %q; the pushed URL must stay the configured one", r.URL)
+	}
+
+	// A failure must not carry it either.
+	h.URL = "http://127.0.0.1:1/api/sub/"
+	r, err = checkHTTP(context.Background(), c, h, time.Second)
+	if err != nil || r.OK || strings.Contains(fmt.Sprintf("%+v", r), secret) {
+		t.Errorf("failed check: r=%+v err=%v", r, err)
+	}
+
+	// No file: no result, so the hub shows no data instead of a false outage.
+	h.PathFile = filepath.Join(t.TempDir(), "missing")
+	if _, err := checkHTTP(context.Background(), c, h, time.Second); err == nil {
+		t.Error("missing file: want an error")
+	}
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.PathFile = file
+	if _, err := checkHTTP(context.Background(), c, h, time.Second); err == nil {
+		t.Error("empty file: want an error")
 	}
 }
