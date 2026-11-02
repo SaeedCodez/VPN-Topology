@@ -2,10 +2,10 @@
 # vpnmap local check: relay forwards (read-only)
 #
 # Reports whether the realm relay is active and how many forwards
-# `relay-ctl status` lists. The forward count is a best-effort parse: lines
-# like "0.0.0.0:443 -> 10.0.0.2:443", "listen = ..." or "[[endpoints]]"
-# blocks are counted; adapt count_forwards() if your relay-ctl prints
-# something else. Status is ok whenever realm is active.
+# `relay-ctl status` lists: the rows of its "NAME LISTEN STATUS REMOTE" table
+# (STATUS is UP, DOWN or OFF, maybe with a colour code). Other relay setups
+# may print "0.0.0.0:443 -> 10.0.0.2:443", "listen = ..." or "[[endpoints]]"
+# blocks, so those are counted too. Status is ok whenever realm is active.
 #
 #   {"status":"ok|down","value":<forwards>,"detail":"...","data":{...}}
 #
@@ -27,12 +27,14 @@ json_str() {
 }
 
 count_forwards() { # stdin: relay-ctl status output
-	local text arrows endpoints listens n
+	local text rows arrows endpoints listens n
 	text=$(cat)
+	rows=$(printf '%s\n' "$text" | grep -cE '^[^[:space:]]+[[:space:]]+[0-9]+[[:space:]]+[^[:space:]]*(UP|DOWN|OFF)')
 	arrows=$(printf '%s\n' "$text" | grep -cE -- '(->|=>|→)')
 	endpoints=$(printf '%s\n' "$text" | grep -cE '^[[:space:]]*\[\[endpoints\]\]')
 	listens=$(printf '%s\n' "$text" | grep -ciE '^[[:space:]]*"?listen"?[[:space:]]*[=:]')
-	n=$arrows
+	n=$rows
+	[ "$arrows" -gt "$n" ] && n=$arrows
 	[ "$endpoints" -gt "$n" ] && n=$endpoints
 	[ "$listens" -gt "$n" ] && n=$listens
 	echo "$n"

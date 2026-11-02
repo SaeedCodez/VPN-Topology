@@ -4,22 +4,28 @@
 # Runs `xbridger doctor --json` inside the backend container and maps it to
 # the vpnmap check contract on stdout:
 #   {"status":"ok|degraded|down","value":<connections>,"detail":"...","data":{"connections":[...]}}
-# xbridger doctor exit codes: 0 healthy, 1 degraded, 2 down. The connection
-# list goes into data.connections, where the hub reads the status of
-# connection mt6snj5mlbnn.
+# xbridger doctor exit codes: 0 healthy, 1 degraded, 2 down. Its JSON is
+# {health, exitCode, failed, warned, checks: [{name, status, detail}]} with
+# four checks per connection, named "conn <id> #<port index> process|ports|
+# end-to-end|db status". They are folded into one object per connection in
+# data.connections, because the hub reads connection mt6snj5mlbnn there and
+# reports the connection as down when it is missing:
+#   {"id":"...","status":"Connected","process":true,"ports_open":true,"latency":506}
 #
 # Install (as root), then list it in agent.yaml (`vpnmap agent config` does):
 #   install -o root -g root -m 0755 xbridger-doctor.check /etc/vpnmap-agent/checks.d/
-#   checks: [{id: xbridger-doctor, interval: 30s, timeout: 15s}]
+#   checks: [{id: xbridger-doctor, interval: 30s}]
 #
 # The helper runs it as root with only PATH and LANG=C set, stdin=/dev/null,
 # a timeout, a 64 KiB output limit, and redacts the output again.
-# Uses python3 or jq to reshape the output when available, else falls back
-# to a plain mapping of the exit code.
+# Uses python3 to reshape the output. The jq and exit-code fallbacks only
+# give the overall status: without python3 the hub sees no connection list.
 set -u
 
 CONTAINER=backend-app-1
-TIMEOUT=12
+# Below the helper's default check timeout (10s), so a slow doctor is reported
+# here with a reason instead of being killed by the helper.
+TIMEOUT=8
 
 json_str() { # print $1 as a JSON string
 	local s=$1
@@ -45,7 +51,34 @@ esac
 
 if command -v python3 >/dev/null 2>&1; then
 	STATUS=$status REASON=$reason RC=$rc python3 -I -c '
-import json, os, sys
+import json, os, re, sys
+
+def connections_from_checks(checks):
+    conns = {}
+    for c in checks:
+        m = re.fullmatch(r"conn (\S+) #\d+ (process|ports|end-to-end|db status)", str(c.get("name")))
+        if not m:
+            continue
+        conn = conns.setdefault(m[1], {"id": m[1]})
+        ok, text = c.get("status") != "fail", str(c.get("detail", ""))
+        if m[2] == "process":
+            conn["process"] = ok
+        elif m[2] == "ports":
+            conn["ports_open"] = ok
+        elif m[2] == "end-to-end":
+            ms = re.search(r"(\d+)ms via", text)
+            if ms:
+                conn["latency"] = int(ms[1])
+        elif re.match(r"DB says \S+ but xray is up", text):
+            # A stale DB row that the supervisor corrects: traffic flows.
+            conn["status"] = "Connected"
+        else:
+            word = re.match(r"(?:DB says )?(\w+)", text)
+            conn["status"] = word[1] if word else "unknown"
+        if not ok:
+            conn.setdefault("reason", text)
+    return list(conns.values())
+
 raw = sys.stdin.read()
 status, detail, rc = os.environ["STATUS"], os.environ["REASON"], int(os.environ["RC"])
 try:
@@ -56,9 +89,15 @@ except ValueError:
 conns = None
 if isinstance(doc, dict):
     conns = doc.get("connections")
+    checks = doc.get("checks") if isinstance(doc.get("checks"), list) else []
+    if conns is None and checks:
+        conns = connections_from_checks(checks)
     for k in ("summary", "message"):
         if not detail and isinstance(doc.get(k), str):
             detail = doc[k]
+    if not detail and isinstance(doc.get("health"), str):
+        bad = [str(c.get("name")) for c in checks if c.get("status") in ("fail", "warn")]
+        detail = doc["health"] + (": " + ", ".join(bad) if bad else "")
 elif isinstance(doc, list):
     conns = doc
 out = {"status": status, "detail": detail or "xbridger doctor exit %d" % rc, "data": {}}

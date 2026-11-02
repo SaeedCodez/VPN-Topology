@@ -162,10 +162,11 @@ one JSON object:
 There are examples in `deploy/checks.d/`:
 
 * `xbridger-doctor.check`: maps `xbridger doctor --json` to the contract
-  and puts the connection list in `data.connections`. It falls back to jq,
-  or to a plain mapping of the exit code, when python3 is missing.
+  and folds its per-connection checks into `data.connections`. Without
+  python3 it falls back to jq or the exit code, which give the overall
+  status only, so the hub then sees no connection.
 * `relay-forwards.check`: reports whether realm is active and how many
-  forwards `relay-ctl status` lists.
+  forwards the `relay-ctl status` table lists.
 * `remnawave-backup-age.check`: reports the backup age in minutes
   (degraded above 35, down above 45).
 

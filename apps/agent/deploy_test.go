@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -192,6 +193,63 @@ cat "$FAKE_OUT" 2>/dev/null; exit ${FAKE_RC:-0}`})
 	}
 }
 
+// The real shape of `xbridger doctor --json` (see doctor.ts in the xbridger repo).
+const doctorRealJSON = `{"health":"healthy","exitCode":0,"failed":0,"warned":0,"checks":[
+{"name":"db","status":"pass","detail":"reachable (80ms)"},
+{"name":"conn mt6snj5mlbnn #0 process","status":"pass","detail":"pid 394"},
+{"name":"conn mt6snj5mlbnn #0 ports","status":"pass","detail":"listening on ss-in 127.0.0.1:9000"},
+{"name":"conn mt6snj5mlbnn #0 end-to-end","status":"pass","detail":"506ms via http-in 127.0.0.1:8000"},
+{"name":"conn mt6snj5mlbnn #0 db status","status":"pass","detail":"Connected, matches reality"}]}`
+
+// After a reboot on 2026-10-13: nothing runs while the DB still says Connected.
+const doctorDownJSON = `{"health":"down","exitCode":2,"failed":3,"warned":0,"checks":[
+{"name":"conn mt6snj5mlbnn #0 process","status":"fail","detail":"xray is not running for this connection"},
+{"name":"conn mt6snj5mlbnn #0 ports","status":"fail","detail":"not listening on ss-in 127.0.0.1:9000"},
+{"name":"conn mt6snj5mlbnn #0 end-to-end","status":"skip","detail":"skipped: the local process is down"},
+{"name":"conn mt6snj5mlbnn #0 db status","status":"fail","detail":"DB says Connected but xray is not serving"}]}`
+
+const doctorStaleJSON = `{"health":"degraded","exitCode":1,"failed":0,"warned":1,"checks":[
+{"name":"conn mt6snj5mlbnn #0 process","status":"pass","detail":"pid 394"},
+{"name":"conn mt6snj5mlbnn #0 ports","status":"pass","detail":"listening on ss-in 127.0.0.1:9000"},
+{"name":"conn mt6snj5mlbnn #0 end-to-end","status":"pass","detail":"480ms via http-in 127.0.0.1:8000"},
+{"name":"conn mt6snj5mlbnn #0 db status","status":"warn","detail":"DB says Error but xray is up and traffic flows"}]}`
+
+// These are the fields the hub's xbridger-connection collector reads.
+func TestXbridgerDoctorRealOutput(t *testing.T) {
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not installed")
+	}
+	fake := fakeTools(t, map[string]string{
+		"docker":  `cat "$FAKE_OUT"; exit ${FAKE_RC:-0}`,
+		"timeout": `shift; exec "$@"`,
+	})
+	path := fake + ":" + sysexec.SafePATH + ":" + filepath.Dir(py)
+	for _, tc := range []struct {
+		name, doc, rc, wantStatus, wantDetail string
+		want                                  map[string]any
+	}{
+		{"healthy", doctorRealJSON, "0", "ok", "healthy", map[string]any{"id": "mt6snj5mlbnn", "status": "Connected", "process": true, "ports_open": true, "latency": float64(506)}},
+		{"down", doctorDownJSON, "2", "down", "down: conn mt6snj5mlbnn #0 process, conn mt6snj5mlbnn #0 ports, conn mt6snj5mlbnn #0 db status",
+			map[string]any{"id": "mt6snj5mlbnn", "status": "Connected", "process": false, "ports_open": false, "reason": "xray is not running for this connection"}},
+		{"stale db row", doctorStaleJSON, "1", "degraded", "degraded: conn mt6snj5mlbnn #0 db status", map[string]any{"id": "mt6snj5mlbnn", "status": "Connected", "process": true, "ports_open": true, "latency": float64(480)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "doctor.json")
+			os.WriteFile(out, []byte(tc.doc), 0o644)
+			m, status := runCheckScript(t, "xbridger-doctor", path, "FAKE_OUT="+out, "FAKE_RC="+tc.rc)
+			data, _ := m["data"].(map[string]any)
+			conns, _ := data["connections"].([]any)
+			if status != tc.wantStatus || m["detail"] != tc.wantDetail || m["value"] != float64(1) || len(conns) != 1 {
+				t.Fatalf("%v", m)
+			}
+			if !reflect.DeepEqual(conns[0], tc.want) {
+				t.Errorf("connection: got %v want %v", conns[0], tc.want)
+			}
+		})
+	}
+}
+
 func TestRelayForwardsCheck(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "relay.txt")
 	os.WriteFile(out, []byte("realm: running\n0.0.0.0:443 -> 10.0.0.2:443\n0.0.0.0:8443 -> 10.0.0.3:8443\n"), 0o644)
@@ -206,6 +264,28 @@ func TestRelayForwardsCheck(t *testing.T) {
 	}
 	m, status = runCheckScript(t, "relay-forwards", path, "FAKE_OUT="+out, "FAKE_STATE=failed")
 	if status != "down" || m["detail"] != "realm is failed" {
+		t.Errorf("%v", m)
+	}
+}
+
+// The real table of `relay-ctl status`, with its colour codes.
+const relayCtlStatus = "=== Service ===\n\u25cf realm.service - Realm TCP Relay\n     Active: active (running)\n\n" +
+	"=== Forwards ===\nNAME                   LISTEN  STATUS   REMOTE                         COMMENT\n" +
+	"-------------------------------------------------\n" +
+	"main                   443     \x1b[0;32mUP      \x1b[0m 31.56.89.58:443                Initial forward\n" +
+	"DE                     8443    DOWN     92.42.207.135:8443             \n" +
+	"XBRIDGER-1             2053    OFF      81.12.50.23:2053               Xbridger-1 Server\n\n" +
+	"=== Active connections per forward ===\n  main                   port 443    : 0 connections\n"
+
+func TestRelayForwardsRealTable(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "relay.txt")
+	os.WriteFile(out, []byte(relayCtlStatus), 0o644)
+	fake := fakeTools(t, map[string]string{
+		"relay-ctl": `cat "$FAKE_OUT"`,
+		"systemctl": `echo active`,
+	})
+	path := fake + ":" + minimalPath(t, coreTools...)
+	if m, status := runCheckScript(t, "relay-forwards", path, "FAKE_OUT="+out); status != "ok" || m["value"] != float64(3) {
 		t.Errorf("%v", m)
 	}
 }

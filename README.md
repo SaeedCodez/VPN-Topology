@@ -210,8 +210,5 @@ probe's own client fails.
 - **Probe server:** runs on Coolify for now; to move to an Iranian server outside the user path.
 - **Coolify location:** if the hub is abroad, hub-side probes see the network
   from abroad; Iran-side checks come from agents and the probe.
-- **Exact outputs** of `relay-ctl status` and `xbridger doctor --json` (the
-  example local checks parse them best-effort), and the France NIC name (E6
-  assumes `eth0`).
 - I could not read the XBridger repo's CLAUDE.md files (not reachable from
   this environment); style follows the stack described in Notion 09.
