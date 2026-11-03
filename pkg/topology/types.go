@@ -100,7 +100,11 @@ type Node struct {
 	Card    []string     `yaml:"card,omitempty" json:"card,omitempty"`
 	Runbook []RunbookCmd `yaml:"runbook,omitempty" json:"runbook,omitempty"`
 	Tags    []string     `yaml:"tags,omitempty" json:"tags,omitempty"`
-	Defined DefinedIn    `yaml:"-" json:"defined_in"`
+	// Listens declares ports the server is expected to listen on beyond those
+	// implied by checks and links ("tcp/80", "tcp/8000-8100"), so drift only
+	// shows what is really unexpected.
+	Listens []string  `yaml:"listens,omitempty" json:"listens,omitempty"`
+	Defined DefinedIn `yaml:"-" json:"defined_in"`
 }
 
 // Fact is a short key/value shown in the side panel and `vpnmap describe`.

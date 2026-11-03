@@ -737,7 +737,7 @@
       ]
     },
     "check-metric": {
-      "description": "Collector spec. Allowed collectors here: 3xui-inbound, boot-time, http-probe, local-check, nft-counter, remnawave-node, remnawave-online, ss-conns, tcp-connect, tls-expiry, wg-handshake, wg-transfer, xbridger-connection, xray-stats",
+      "description": "Collector spec. Allowed collectors here: 3xui-inbound, boot-time, http-probe, local-check, nft-counter, nic-counter, remnawave-node, remnawave-online, ss-conns, tcp-connect, tls-expiry, wg-handshake, wg-transfer, xbridger-connection, xray-stats",
       "oneOf": [
         {
           "additionalProperties": false,
@@ -1201,6 +1201,57 @@
             "collector",
             "host",
             "interface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "nic-counter",
+              "description": "Network interface counters: rx/tx bytes of the host's network interfaces from /proc/net/dev, which every agent sends anyway (no nft, no privileges). Direction is inferred like wg-transfer: if host is the link's `from` node, tx = up. Use it when nftables cannot be installed or a link is simply \"all traffic of this server\"."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interface": {
+              "description": "Interface name, or * for all interfaces except loopback/docker/veth. Default: *.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "up": {
+              "description": "Which counter is the from→to direction (normally inferred).",
+              "enum": [
+                "rx",
+                "tx"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
           ],
           "type": "object"
         },
@@ -1701,7 +1752,7 @@
       ]
     },
     "check-traffic": {
-      "description": "Collector spec. Allowed collectors here: 3xui-inbound, nft-counter, wg-transfer, xray-stats",
+      "description": "Collector spec. Allowed collectors here: 3xui-inbound, nft-counter, nic-counter, wg-transfer, xray-stats",
       "oneOf": [
         {
           "additionalProperties": false,
@@ -1938,6 +1989,61 @@
             "collector",
             "host",
             "interface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collector": {
+              "const": "nic-counter",
+              "description": "Network interface counters: rx/tx bytes of the host's network interfaces from /proc/net/dev, which every agent sends anyway (no nft, no privileges). Direction is inferred like wg-transfer: if host is the link's `from` node, tx = up. Use it when nftables cannot be installed or a link is simply \"all traffic of this server\"."
+            },
+            "fallback": {
+              "$ref": "#/definitions/check-traffic",
+              "description": "Used when the primary source has no data."
+            },
+            "host": {
+              "description": "Node id whose agent collects this (must have agent: true).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Lowercase id: letters, digits and dashes.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "type": "string"
+            },
+            "interface": {
+              "description": "Interface name, or * for all interfaces except loopback/docker/veth. Default: *.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "on_fail": {
+              "enum": [
+                "down",
+                "degraded"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "up": {
+              "description": "Which counter is the from→to direction (normally inferred).",
+              "enum": [
+                "rx",
+                "tx"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "collector",
+            "host"
           ],
           "type": "object"
         },
@@ -2337,6 +2443,14 @@
               "service"
             ],
             "type": "string"
+          },
+          "listens": {
+            "description": "Expected listening ports beyond those implied by checks and links, e.g. tcp/80 or tcp/8000-8100 (used by drift).",
+            "items": {
+              "pattern": "^(tcp|udp)/[0-9]{1,5}(-[0-9]{1,5})?$",
+              "type": "string"
+            },
+            "type": "array"
           },
           "metrics": {
             "items": {

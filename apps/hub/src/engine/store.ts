@@ -34,6 +34,8 @@ export class LatestStore {
   readonly logs = new Map<string, LogLine[]>(); // "node/logid"
   readonly probes = new Map<string, { failures: number; last: NonNullable<Push['probes']>[number]; lastAt: number }>();
   readonly logMatchAt = new Map<string, number>(); // check key → last match (ms)
+  /** node → listening port ("udp/51820") → first seen (ms), for drift persistence. */
+  readonly listenSince = new Map<string, Map<string, number>>();
 
   // Hub-side collector results.
   remnawave: { at: number; ok: boolean; error?: string; nodes: RemnawaveNode[]; onlineNow: number | null } | null = null;
@@ -60,6 +62,11 @@ export class LatestStore {
       }
     }
     this.agents.set(node, { node, push, lastSeen: now, bootTime });
+    const seen = this.listenSince.get(node) ?? new Map<string, number>();
+    const current = new Set(push.agent.capabilities.listening ?? []);
+    for (const p of current) if (!seen.has(p)) seen.set(p, now);
+    for (const p of [...seen.keys()]) if (!current.has(p)) seen.delete(p);
+    this.listenSince.set(node, seen);
 
     for (const c of push.nft ?? []) this.counter(`nft:${node}:${c.name}`, now, c.bytes);
     for (const w of push.wg ?? []) {

@@ -159,6 +159,17 @@ var Catalog = []CollectorInfo{
 		Example: "{ collector: wg-transfer, host: iran-mullvad, netns: mv-de, interface: wg-de }",
 	},
 	{
+		Name: "nic-counter", Title: "Network interface counters", RunsOn: "agent",
+		Produces: []string{"up_bps", "down_bps"}, Usage: []string{UseTraffic, UseMetric},
+		Doc: "rx/tx bytes of the host's network interfaces from /proc/net/dev, which every agent sends anyway (no nft, no privileges). Direction is inferred like wg-transfer: if host is the link's `from` node, tx = up. Use it when nftables cannot be installed or a link is simply \"all traffic of this server\".",
+		Params: []Param{
+			hostParam,
+			{Name: "interface", Type: PString, Default: "*", Doc: "Interface name, or * for all interfaces except loopback/docker/veth."},
+			{Name: "up", Type: PEnum, Enum: []string{"rx", "tx"}, Doc: "Which counter is the from→to direction (normally inferred)."},
+		},
+		Example: "{ collector: nic-counter, host: france-exit }",
+	},
+	{
 		Name: "wg-handshake", Title: "WireGuard handshake age", RunsOn: "agent",
 		Produces: []string{"health", "age_s"}, Usage: []string{UseCheck, UseMetric},
 		Doc: "Age of the latest handshake of the interface's peer (the newest one if there are several). Older than max_age = failed.",

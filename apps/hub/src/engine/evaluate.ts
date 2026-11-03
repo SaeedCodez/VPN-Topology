@@ -122,6 +122,7 @@ function unitOf(c: CheckSpec): string {
     case 'ss-conns':
       return 'conns';
     case 'nft-counter':
+    case 'nic-counter':
     case 'wg-transfer':
     case 'xray-stats':
     case '3xui-inbound':
@@ -541,7 +542,7 @@ export function buildSnapshot(b: Bundle, obs: Observations, ctx: EvalContext): S
 }
 
 function isTrafficOnly(c: CheckSpec) {
-  return ['nft-counter', 'wg-transfer', 'xray-stats', 'ss-conns', 'remnawave-online'].includes(c.collector);
+  return ['nft-counter', 'wg-transfer', 'xray-stats', 'nic-counter', 'ss-conns', 'remnawave-online'].includes(c.collector);
 }
 
 export function linkName(l: TopoLink, g?: Graph): string {

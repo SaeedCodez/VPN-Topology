@@ -49,6 +49,7 @@ export interface TopoNode {
   card?: string[];
   runbook?: RunbookCmd[];
   tags?: string[];
+  listens?: string[];
   defined_in: DefinedIn;
 }
 
