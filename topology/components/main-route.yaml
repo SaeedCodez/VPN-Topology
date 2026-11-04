@@ -203,7 +203,10 @@ links:
     traffic: { collector: 3xui-inbound, panel: france, inbound: Cloudflare-WS }
     health:
       - { id: inbound, collector: 3xui-inbound, panel: france, inbound: Cloudflare-WS }
-      - { id: origin, collector: tcp-connect, from: hub, target: "188.130.207.152:443" }
+      # A full TLS handshake, not tcp-connect: the hub's traffic goes through
+      # v2dock, whose transparent proxy accepts every TCP handshake locally, so
+      # a plain connect is "ok" even when the origin is down.
+      - { id: origin, collector: tls-expiry, host: pnl-1.sirparzhak.xyz, connect: 188.130.207.152, interval: 15s, on_fail: down }
 
   - id: e6
     label: E6
