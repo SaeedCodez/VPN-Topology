@@ -1,10 +1,10 @@
 # yaml-language-server: $schema=../../schema/topology.schema.json
 component: mullvad-route
-title: Mullvad route (Mullvad-Test squad → DE / US / TR)
+title: Mullvad route (Mullvad-Test squad → DE / US / TR / FR)
 docs: https://app.notion.com/p/3f828d2a9e9b819d90d8e9173fac68bc   # 01 · Flow B
 description: >-
   Users connect directly to the Iran-Mullvad node (no relay). Each inbound
-  (443 = DE, 8443 = US, 2053 = TR) goes to its own SOCKS outbound, into a
+  (443 = DE, 8443 = US, 2053 = TR, 2083 = FR) goes to its own SOCKS outbound, into a
   network namespace with a WireGuard tunnel to a Mullvad relay. TCP only
   (08 #20). The US tunnel was dead on 2026-10-21 (08 #21).
 
@@ -14,12 +14,12 @@ nodes:
     kind: vpn-node
     group: iran-other
     address: [92.42.207.243]
-    role: "Remnawave node; netns mv-de / mv-us / mv-tr (WireGuard to Mullvad); wg-game udp/51821"
+    role: "Remnawave node; netns mv-de / mv-us / mv-tr / mv-fr (WireGuard to Mullvad); wg-game udp/51821"
     agent: true
     docs: https://app.notion.com/p/3f828d2a9e9b819baabcc44ca0b4538f
     facts:
       - { label: Software, value: "remnanode 3.4.2, mullvad-ns, microsocks, game-gw" }
-      - { label: Inbounds, value: "443 DE · 8443 US · 2053 TR (profile MULLVAD-IR)" }
+      - { label: Inbounds, value: "443 DE · 8443 US · 2053 TR · 2083 FR (profile MULLVAD-IR)" }
       - { label: UDP, value: "not carried on the Xray route (08 #20)" }
     checks:
       - { id: remnawave, collector: remnawave-node, node: Iran-Mullvad }
@@ -27,13 +27,14 @@ nodes:
       - { id: ns-de, collector: systemd-unit, host: iran-mullvad, unit: mullvad-ns@de.service, on_fail: degraded }
       - { id: ns-us, collector: systemd-unit, host: iran-mullvad, unit: mullvad-ns@us.service, on_fail: degraded }
       - { id: ns-tr, collector: systemd-unit, host: iran-mullvad, unit: mullvad-ns@tr.service, on_fail: degraded }
+      - { id: ns-fr, collector: systemd-unit, host: iran-mullvad, unit: mullvad-ns@fr.service, on_fail: degraded }
     metrics:
       - { id: online, label: Online, collector: remnawave-online, node: Iran-Mullvad }
-      - { id: conns, label: Conns, collector: ss-conns, host: iran-mullvad, ports: [443, 8443, 2053] }
+      - { id: conns, label: Conns, collector: ss-conns, host: iran-mullvad, ports: [443, 8443, 2053, 2083] }
     card: [online, conns, cpu]
     runbook:
       - { title: mullvad-ns status, cmd: "ssh root@92.42.207.243 'mullvad-ns status'" }
-      - { title: Handshakes in every namespace, cmd: "ssh root@92.42.207.243 'for n in de us tr; do echo mv-$n; ip netns exec mv-$n wg show all latest-handshakes; done'" }
+      - { title: Handshakes in every namespace, cmd: "ssh root@92.42.207.243 'for n in de us tr fr; do echo mv-$n; ip netns exec mv-$n wg show all latest-handshakes; done'" }
 
   - id: mullvad-de
     name: Mullvad DE
@@ -59,6 +60,16 @@ nodes:
     role: Istanbul relay, exit of the TR route
     docs: https://app.notion.com/p/3f828d2a9e9b811497def9a6a1ae0b6d
 
+  - id: mullvad-fr
+    name: Mullvad FR
+    kind: vpn-provider
+    group: mullvad
+    address: [fr-par-wg-004, 193.32.126.69]
+    role: Paris relay (Mullvad-owned), exit of the FR route
+    docs: https://app.notion.com/p/3f828d2a9e9b811497def9a6a1ae0b6d
+    facts:
+      - { label: RTT from node, value: "98 ms (2026-11-04; DE 88 ms, TR 136 ms)" }
+
 links:
   - id: e7
     label: E7
@@ -66,13 +77,14 @@ links:
     from: users
     to: iran-mullvad
     plane: data
-    protocol: "VLESS+REALITY 443 (DE) · 8443 (US) · 2053 (TR)"
-    traffic: { collector: nft-counter, host: iran-mullvad, up: { hook: input, proto: tcp, dport: [443, 8443, 2053] }, down: { hook: output, proto: tcp, sport: [443, 8443, 2053] } }
-    conns: { collector: ss-conns, host: iran-mullvad, ports: [443, 8443, 2053] }
+    protocol: "VLESS+REALITY 443 (DE) · 8443 (US) · 2053 (TR) · 2083 (FR)"
+    traffic: { collector: nft-counter, host: iran-mullvad, up: { hook: input, proto: tcp, dport: [443, 8443, 2053, 2083] }, down: { hook: output, proto: tcp, sport: [443, 8443, 2053, 2083] } }
+    conns: { collector: ss-conns, host: iran-mullvad, ports: [443, 8443, 2053, 2083] }
     health:
       - { id: de-443, collector: tcp-connect, from: probe, target: "92.42.207.243:443", on_fail: degraded }
       - { id: us-8443, collector: tcp-connect, from: probe, target: "92.42.207.243:8443", on_fail: degraded }
       - { id: tr-2053, collector: tcp-connect, from: probe, target: "92.42.207.243:2053", on_fail: degraded }
+      - { id: fr-2083, collector: tcp-connect, from: probe, target: "92.42.207.243:2083", on_fail: degraded }
 
   - id: e8-de
     label: E8a
@@ -105,9 +117,20 @@ links:
     traffic: { collector: wg-transfer, host: iran-mullvad, netns: mv-tr, interface: wg-tr }
     health: { collector: wg-handshake, host: iran-mullvad, netns: mv-tr, interface: wg-tr, max_age: 3m }
 
+  - id: e8-fr
+    label: E8d
+    title: Iran-Mullvad → Mullvad FR (wg-fr)
+    from: iran-mullvad
+    to: mullvad-fr
+    plane: data
+    protocol: WireGuard udp/51820 (netns mv-fr)
+    traffic: { collector: wg-transfer, host: iran-mullvad, netns: mv-fr, interface: wg-fr }
+    health: { collector: wg-handshake, host: iran-mullvad, netns: mv-fr, interface: wg-fr, max_age: 3m }
+
   - { id: mv-de-exit, title: Mullvad DE → Internet, from: mullvad-de, to: internet, plane: data, protocol: egress }
   - { id: mv-us-exit, title: Mullvad US → Internet, from: mullvad-us, to: internet, plane: data, protocol: egress }
   - { id: mv-tr-exit, title: Mullvad TR → Internet, from: mullvad-tr, to: internet, plane: data, protocol: egress }
+  - { id: mv-fr-exit, title: Mullvad FR → Internet, from: mullvad-fr, to: internet, plane: data, protocol: egress }
 
 routes:
   - id: mullvad-de
@@ -133,3 +156,11 @@ routes:
     users: { collector: remnawave-online, node: Iran-Mullvad }
     users_estimate: 3
     probe: { collector: e2e-probe, expect_country: TR }
+
+  - id: mullvad-fr
+    title: Mullvad FR
+    hops: [e7, e8-fr, mv-fr-exit]
+    squads: [Mullvad-Test]
+    users: { collector: remnawave-online, node: Iran-Mullvad }
+    users_estimate: 3
+    probe: { collector: e2e-probe, expect_country: FR }
