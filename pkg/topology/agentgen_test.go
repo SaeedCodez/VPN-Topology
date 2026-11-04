@@ -127,28 +127,28 @@ func TestAgentConfigPanel(t *testing.T) {
 func TestAgentConfigIranMullvad(t *testing.T) {
 	b := repoBundle(t)
 	cfg := genCfg(t, b, "iran-mullvad")
-	want := []agentcfg.WGConfig{{Iface: "wg-game"}, {Netns: "mv-de", Iface: "wg-de"}, {Netns: "mv-tr", Iface: "wg-tr"}, {Netns: "mv-us", Iface: "wg-us"}}
+	want := []agentcfg.WGConfig{{Iface: "wg-game"}, {Netns: "mv-de", Iface: "wg-de"}, {Netns: "mv-fr", Iface: "wg-fr"}, {Netns: "mv-tr", Iface: "wg-tr"}, {Netns: "mv-us", Iface: "wg-us"}}
 	if !reflect.DeepEqual(cfg.WG, want) {
 		t.Errorf("wg = %+v (wg-transfer and wg-handshake must be deduplicated)", cfg.WG)
 	}
 	up := findCounter(cfg, "l_e7_traffic_up")
-	if up == nil || !reflect.DeepEqual(up.Dports, []int{443, 8443, 2053}) || up.Dport != 0 {
+	if up == nil || !reflect.DeepEqual(up.Dports, []int{443, 8443, 2053, 2083}) || up.Dport != 0 {
 		t.Errorf("a port list must become dports: %+v", up)
 	}
 	down := findCounter(cfg, "l_e7_traffic_down")
-	if down == nil || !reflect.DeepEqual(down.Sports, []int{443, 8443, 2053}) {
+	if down == nil || !reflect.DeepEqual(down.Sports, []int{443, 8443, 2053, 2083}) {
 		t.Errorf("down = %+v", down)
 	}
 	ids := map[string]bool{}
 	for _, s := range cfg.SS {
 		ids[s.ID] = true
 	}
-	for _, id := range []string{"link-e7-conns-443", "link-e7-conns-8443", "link-e7-conns-2053", "node-iran-mullvad-conns-443"} {
+	for _, id := range []string{"link-e7-conns-443", "link-e7-conns-8443", "link-e7-conns-2053", "link-e7-conns-2083", "node-iran-mullvad-conns-443"} {
 		if !ids[id] {
 			t.Errorf("ss id %s missing", id)
 		}
 	}
-	if len(cfg.Units) != 3 || cfg.Units[0] != "mullvad-ns@de.service" {
+	if len(cfg.Units) != 4 || cfg.Units[0] != "mullvad-ns@de.service" {
 		t.Errorf("units = %v", cfg.Units)
 	}
 }
@@ -166,7 +166,7 @@ func TestAgentConfigProbe(t *testing.T) {
 			t.Errorf("outbound file %s", r.OutboundFile)
 		}
 	}
-	if !reflect.DeepEqual(routes, []string{"main:FR", "mullvad-de:DE", "mullvad-tr:TR", "mullvad-us:US"}) {
+	if !reflect.DeepEqual(routes, []string{"main:FR", "mullvad-de:DE", "mullvad-fr:FR", "mullvad-tr:TR", "mullvad-us:US"}) {
 		t.Errorf("routes = %v", routes)
 	}
 	targets := map[string]bool{}
