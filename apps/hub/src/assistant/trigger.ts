@@ -17,6 +17,13 @@ export interface TgMessage {
   reply_to_message?: { message_id: number; from?: { id: number | string; is_bot?: boolean } };
 }
 
+export interface TgCallback {
+  id: string;
+  data?: string;
+  from?: { id: number | string; first_name?: string; username?: string };
+  message?: { message_id: number; chat?: { id: number | string } };
+}
+
 export type Decision =
   | { answer: true; question: string; replyToBotMessage: number | null; fromId: string; fromName: string }
   | { answer: false; reason: 'other-chat' | 'not-for-bot' | 'not-allowed' | 'empty' | 'from-bot'; fromId?: string; help?: boolean };

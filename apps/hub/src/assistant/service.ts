@@ -1,12 +1,14 @@
 import { AssistantModel, AssistantSettingsView, AssistantTestResult } from '../contract';
 import { HubService } from '../hub.service';
 import { TelegramSender } from '../notify/telegram';
+import { OpsService } from '../ops/service';
+import { Vault } from '../redact';
 import { parseAt, parseDuration, Queries } from '../queries';
-import { answer, splitMessage } from './agent';
+import { answer, OpsRuntime, splitMessage } from './agent';
 import { ChatFn, listModels, openRouterChat } from './openrouter';
 import { AssistantPatch, applyPatch, decrypt, DEFAULTS, publicView, SETTINGS_KEY, StoredAssistant } from './settings';
 import { ReadApi, ToolContext } from './tools';
-import { decide, TgMessage } from './trigger';
+import { decide, TgCallback, TgMessage } from './trigger';
 
 const OFFSET_KEY = 'telegram_offset';
 const MAX_PARALLEL = 2;
@@ -36,6 +38,7 @@ export class AssistantService {
   constructor(
     private readonly hub: HubService,
     private readonly telegram: TelegramSender | null,
+    private readonly ops: OpsService,
     private readonly chatFactory: (key: string, model: string) => ChatFn = (key, model) => openRouterChat({ key, model, publicUrl: hub.cfg.publicUrl }),
     private readonly fetchFn: typeof fetch = fetch,
   ) {
@@ -50,6 +53,11 @@ export class AssistantService {
 
   stop() {
     this.stopRequested = true;
+  }
+
+  /** Re-evaluate whether to poll (called when the ops settings change). */
+  refresh() {
+    this.reconcile();
   }
 
   // ------------------------------------------------------------------ settings
@@ -105,7 +113,10 @@ export class AssistantService {
   }
 
   private ready(): boolean {
-    return !!this.telegram && this.hub.cfg.mode === 'live' && this.settings.enabled && !!this.settings.model && !!this.key();
+    if (!this.telegram || this.hub.cfg.mode !== 'live') return false;
+    const assistantReady = this.settings.enabled && !!this.settings.model && !!this.key();
+    const opsReady = this.ops.enabled && !!this.key() && !!this.ops.actionModel;
+    return assistantReady || opsReady;
   }
 
   /** Start or stop polling to match the settings. */
@@ -125,7 +136,7 @@ export class AssistantService {
     console.log('assistant: listening for Telegram questions');
     try {
       while (!this.stopRequested) {
-        const r = await tg.call('getUpdates', { offset: this.offset, timeout: 25, allowed_updates: ['message'] }, 40_000);
+        const r = await tg.call('getUpdates', { offset: this.offset, timeout: 25, allowed_updates: ['message', 'callback_query'] }, 40_000);
         this.lastPollAt = Date.now();
         if (!r.ok) {
           this.pollError = r.status === 409 ? 'another getUpdates client or a webhook is using this bot (409): remove the webhook (deleteWebhook) or stop the other client' : r.error ?? 'error';
@@ -135,9 +146,10 @@ export class AssistantService {
         }
         this.pollError = null;
         backoff = 5_000;
-        for (const u of (r.result ?? []) as { update_id: number; message?: TgMessage }[]) {
+        for (const u of (r.result ?? []) as { update_id: number; message?: TgMessage; callback_query?: TgCallback }[]) {
           this.offset = u.update_id + 1;
           if (u.message) void this.handle(u.message);
+          else if (u.callback_query) void this.handleCallback(u.callback_query);
         }
         if (r.result?.length) await this.hub.db.putSetting(OFFSET_KEY, this.offset).catch(() => undefined);
       }
@@ -149,9 +161,28 @@ export class AssistantService {
 
   // ------------------------------------------------------------------ one question
 
+  /** An inline-button tap (ops plan approve/cancel/stop). Only the configured chat. */
+  private async handleCallback(cb: TgCallback) {
+    const tg = this.telegram;
+    if (!tg || !cb.data || String(cb.message?.chat?.id ?? '') !== String(tg.chatId)) return;
+    const fromId = String(cb.from?.id ?? '');
+    let text = '';
+    try {
+      text = await this.ops.handleCallback(cb.data, fromId, cb.message?.message_id);
+    } catch (e: any) {
+      text = `خطا: ${e?.message ?? e}`.slice(0, 180);
+    }
+    await tg.call('answerCallbackQuery', { callback_query_id: cb.id, ...(text ? { text, show_alert: false } : {}) });
+  }
+
   async handle(m: TgMessage) {
     const tg = this.telegram;
     if (!tg) return;
+    // An approver can stop a running ops task with /stop.
+    if (/^\/stop(?:@\w+)?\s*$/i.test((m.text ?? '').trim()) && this.ops.isApprover(String(m.from?.id ?? ''))) {
+      void tg.sendNow(this.ops.stopCurrent(), { plain: true, replyTo: m.message_id });
+      return;
+    }
     const d = decide(m, { chatId: tg.chatId, botId: tg.botId, allowedUserIds: this.settings.allowedUserIds });
     if (!d.answer) {
       if (d.reason === 'not-allowed') {
@@ -172,7 +203,9 @@ export class AssistantService {
       return;
     }
     const key = this.key();
-    if (!key || !this.settings.model) return;
+    const opsMode = this.ops.activeFor(d.fromId);
+    const model = opsMode ? this.ops.actionModel : this.settings.model;
+    if (!key || !model) return;
     this.inFlight++;
     this.usage.questions++;
     const typing = setInterval(() => void tg.call('sendChatAction', { chat_id: tg.chatId, action: 'typing' }), 4_500);
@@ -187,10 +220,17 @@ export class AssistantService {
         parseAt,
         parseDuration,
       };
-      const res = await answer({ question: d.question, thread, replyTo, now: Date.now(), boardUrl: this.hub.cfg.publicUrl }, this.chatFactory(key, this.settings.model), tools);
+      const opsRuntime: OpsRuntime | undefined = opsMode ? this.ops.agentRuntime(new Vault(), d.fromId, tg.chatId) : undefined;
+      const res = await answer({ question: d.question, thread, replyTo, now: Date.now(), boardUrl: this.hub.cfg.publicUrl, ops: opsRuntime }, this.chatFactory(key, model), tools);
       this.usage.promptTokens += res.usage.promptTokens;
       this.usage.completionTokens += res.usage.completionTokens;
       this.usage.costUsd += res.usage.costUsd;
+      if (res.proposedTaskId) {
+        // The approval message is the reply; send any closing line the model added, then stop.
+        if (res.text) void tg.sendNow(res.text, { plain: true, replyTo: m.message_id });
+        console.log(`ops: ${d.fromId} proposed plan ${res.proposedTaskId} in ${res.rounds} round(s)`);
+        return;
+      }
       console.log(`assistant: answered ${d.fromId} in ${res.rounds} round(s), tools: ${res.toolCalls.map((c) => c.name).join(',') || '-'}`);
       const parts = splitMessage(res.text);
       const nextThread = [...thread, { role: 'user' as const, content: d.question }, { role: 'assistant' as const, content: res.text }].slice(-12);

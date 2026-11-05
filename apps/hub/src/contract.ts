@@ -278,6 +278,7 @@ export type EventKind =
   | 'log'
   | 'agent'
   | 'topology'
+  | 'ops'
   | 'demo';
 
 export interface HubEvent {

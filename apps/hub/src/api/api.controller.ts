@@ -7,6 +7,7 @@ import { HubService } from '../hub.service';
 import { Push } from '../engine/protocol';
 import { parseAt, parseDuration, Queries } from '../queries';
 import { AssistantPatch } from '../assistant/settings';
+import { OpsPatch } from '../ops/settings';
 import { linkName } from '../engine/evaluate';
 
 export { parseAt };
@@ -26,7 +27,7 @@ export class ApiController {
   @Public()
   @Get('health')
   health() {
-    return { ok: this.hub.ready, mode: this.hub.cfg.mode, topologyVersion: this.hub.version, tsdb: this.hub.tsdb?.name, db: this.hub.db?.driver, telegram: this.hub.telegram ? 'on' : 'off' };
+    return { ok: this.hub.ready, mode: this.hub.cfg.mode, topologyVersion: this.hub.version, tsdb: this.hub.tsdb?.name, db: this.hub.db?.driver, telegram: this.hub.telegram ? 'on' : 'off', ops: this.hub.ops?.enabled ? 'on' : 'off' };
   }
 
   @Public()
@@ -270,6 +271,44 @@ export class ApiController {
   @Post('assistant/test')
   assistantTest() {
     return this.hub.assistant.test();
+  }
+
+  // ------------------------------------------------------------- ops agent
+
+  @Get('ops')
+  ops() {
+    return this.hub.ops.view();
+  }
+
+  /** Change ops settings (enable/kill switch, action model, approvers, servers). */
+  @Put('ops')
+  async updateOps(@Body() body: OpsPatch & { by?: string }) {
+    try {
+      const { by, ...patch } = body ?? {};
+      const view = await this.hub.ops.update(patch, String(by ?? 'board').slice(0, 64));
+      this.hub.assistant?.refresh(); // enabling ops may start/stop the Telegram poller
+      return view;
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  /** The one-line grant / revoke commands the owner runs on a server. */
+  @Get('ops/servers/:id/grant')
+  opsGrant(@Param('id') id: string) {
+    const g = this.hub.ops.grantFor(id);
+    if (!g) throw new NotFoundException('no such server, or no SSH key yet (enable ops first)');
+    return g;
+  }
+
+  @Post('ops/servers/:id/test')
+  async opsServerTest(@Param('id') id: string) {
+    return this.hub.ops.serverTest(id);
+  }
+
+  @Get('ops/tasks')
+  opsTasks() {
+    return this.hub.ops.tasks();
   }
 
   // ------------------------------------------------------------- demo

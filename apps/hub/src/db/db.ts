@@ -2,6 +2,23 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Bundle, EventKind, HubEvent, TopologyVersion } from '../contract';
 import * as s from './schema';
 
+/** A stored ops-agent task (proposed plan + approval + result). */
+export interface OpsTaskRow {
+  id: string;
+  status: string;
+  plan: any;
+  hash: string;
+  vault?: any;
+  requestedBy: string;
+  approvedBy?: string | null;
+  chatId?: string | null;
+  messageId?: number | null;
+  createdAt: number;
+  finishedAt?: number | null;
+  log?: any[];
+  outcome?: string | null;
+}
+
 /** A message the hub sent to Telegram (alert, recovery, assistant answer). */
 export interface TelegramMessage {
   chatId: string;
@@ -208,6 +225,47 @@ export class Db {
       .onConflictDoNothing();
   }
 
+  // ---------------------------------------------------------------- ops tasks
+
+  async addOpsTask(t: OpsTaskRow) {
+    await this.db.insert(s.opsTasks).values({
+      id: t.id,
+      status: t.status,
+      plan: t.plan,
+      hash: t.hash,
+      vault: t.vault ?? null,
+      requestedBy: t.requestedBy,
+      approvedBy: t.approvedBy ?? null,
+      chatId: t.chatId ?? null,
+      messageId: t.messageId ?? null,
+      createdAt: new Date(t.createdAt),
+      finishedAt: t.finishedAt ? new Date(t.finishedAt) : null,
+      log: t.log ?? [],
+      outcome: t.outcome ?? null,
+    });
+  }
+
+  async updateOpsTask(id: string, patch: Partial<OpsTaskRow>) {
+    const set: any = {};
+    if (patch.status !== undefined) set.status = patch.status;
+    if (patch.approvedBy !== undefined) set.approvedBy = patch.approvedBy;
+    if (patch.messageId !== undefined) set.messageId = patch.messageId;
+    if (patch.finishedAt !== undefined) set.finishedAt = patch.finishedAt ? new Date(patch.finishedAt) : null;
+    if (patch.log !== undefined) set.log = patch.log;
+    if (patch.outcome !== undefined) set.outcome = patch.outcome;
+    if (Object.keys(set).length) await this.db.update(s.opsTasks).set(set).where(eq(s.opsTasks.id, id));
+  }
+
+  async opsTask(id: string): Promise<OpsTaskRow | null> {
+    const rows = await this.db.select().from(s.opsTasks).where(eq(s.opsTasks.id, id)).limit(1);
+    return rows.length ? toOpsRow(rows[0]) : null;
+  }
+
+  async recentOpsTasks(limit = 20): Promise<OpsTaskRow[]> {
+    const rows = await this.db.select().from(s.opsTasks).orderBy(desc(s.opsTasks.createdAt)).limit(Math.min(limit, 200));
+    return rows.map(toOpsRow);
+  }
+
   async telegramMessage(chatId: string, messageId: number): Promise<TelegramMessage | null> {
     const rows = await this.db
       .select()
@@ -218,6 +276,24 @@ export class Db {
     const r = rows[0];
     return { chatId: r.chatId, messageId: Number(r.messageId), kind: r.kind, alertKey: r.alertKey ?? undefined, at: new Date(r.at).getTime(), text: r.text, thread: (r.thread as any) ?? undefined };
   }
+}
+
+function toOpsRow(r: any): OpsTaskRow {
+  return {
+    id: r.id,
+    status: r.status,
+    plan: r.plan,
+    hash: r.hash,
+    vault: r.vault ?? undefined,
+    requestedBy: r.requestedBy ?? r.requested_by,
+    approvedBy: r.approvedBy ?? r.approved_by ?? null,
+    chatId: r.chatId ?? r.chat_id ?? null,
+    messageId: r.messageId != null ? Number(r.messageId) : r.message_id != null ? Number(r.message_id) : null,
+    createdAt: new Date(r.createdAt ?? r.created_at).getTime(),
+    finishedAt: (r.finishedAt ?? r.finished_at) ? new Date(r.finishedAt ?? r.finished_at).getTime() : null,
+    log: (r.log as any[]) ?? [],
+    outcome: r.outcome ?? null,
+  };
 }
 
 function rowToEvent(r: any): HubEvent {

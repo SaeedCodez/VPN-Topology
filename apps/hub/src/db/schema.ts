@@ -63,6 +63,23 @@ export const telegramMessages = pgTable('telegram_messages', {
   thread: jsonb('thread'),
 });
 
+/** Ops-agent tasks: a proposed plan, its approval and the result of running it. */
+export const opsTasks = pgTable('ops_tasks', {
+  id: text('id').primaryKey(),
+  status: text('status').notNull().default('pending'),
+  plan: jsonb('plan').notNull(),
+  hash: text('hash').notNull(),
+  vault: jsonb('vault'), // sealed secret placeholders → values (secretbox)
+  requestedBy: text('requested_by').notNull(),
+  approvedBy: text('approved_by'),
+  chatId: text('chat_id'),
+  messageId: bigint('message_id', { mode: 'number' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  log: jsonb('log').notNull().default([]),
+  outcome: text('outcome'),
+});
+
 export const schemaVersion = pgTable('schema_version', {
   version: integer('version').primaryKey(),
 });
@@ -115,4 +132,19 @@ export const MIGRATIONS: string[] = [
      text text NOT NULL DEFAULT '',
      thread jsonb,
      PRIMARY KEY (chat_id, message_id))`,
+  `CREATE TABLE IF NOT EXISTS ops_tasks (
+     id text PRIMARY KEY,
+     status text NOT NULL DEFAULT 'pending',
+     plan jsonb NOT NULL,
+     hash text NOT NULL,
+     vault jsonb,
+     requested_by text NOT NULL,
+     approved_by text,
+     chat_id text,
+     message_id bigint,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     finished_at timestamptz,
+     log jsonb NOT NULL DEFAULT '[]'::jsonb,
+     outcome text)`,
+  `CREATE INDEX IF NOT EXISTS ops_tasks_created_idx ON ops_tasks (created_at DESC)`,
 ];
