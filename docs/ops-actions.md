@@ -1,8 +1,8 @@
 # Ops actions: a closed, server-enforced action catalog (spec)
 
-Status: **draft for owner approval** (interview 2026-11-05, revised the same
-day: generic, topology-driven, no source-IP pinning). Nothing here is
-implemented until the owner approves this file.
+Status: **approved by the owner 2026-11-05** (interview the same day; revised
+to be generic and topology-driven, with no source-IP pinning). Implemented in
+`pkg/ops`, `apps/ops-runner`, `apps/hub/src/ops` and the topology `ops:` blocks.
 
 The Telegram assistant may read and change the VPN only through named
 actions. There is no shell, no free-form command, path or URL, and no
@@ -17,7 +17,7 @@ data in `topology/components/*.yaml`, reviewed with `vpnmap validate` /
 container, unit, country or relay of today's VPN.
 
 - **Action types** (closed, `pkg/ops/types.go`, one source of truth;
-  `vpnmap ops types --json` writes `apps/hub/src/ops/types.gen.json`, CI fails
+  `vpnmap ops types --write` writes `apps/hub/src/ops/types.gen.json`, CI fails
   if stale). Adding a *type* is a code change reviewed like a new collector.
 - **Per-node `ops:` block** (data). Adding a server, node, container, unit,
   log or script is a YAML change: `vpnmap validate` → `plan` → owner approves
@@ -55,9 +55,10 @@ container, unit, country or relay of today's VPN.
 | `rw.node-restart` / `rw.node-disable` / `rw.node-enable` | C | `node` (Remnawave node names from `remnawave-node` checks whose topology node lists the action in `ops.remnawave`) | fixed `POST /api/nodes/{uuid}/actions/…`; uuid looked up by name, never from the model |
 
 Script parameters may be: `enum` (list), `int` (min/max), or `pattern` (an
-anchored RE2 that `vpnmap validate` proves can only match `[a-z0-9._@:-]`,
-max 64 bytes). Scripts receive them as argv (`--name value`), never through
-a shell.
+anchored RE2). Whatever the pattern says, every value must also be a token:
+ASCII letters, digits and `. _ @ : -`, at most 64 bytes, never starting with
+`-`, never containing `..`. Scripts receive them as argv (`--name value`),
+never through a shell.
 
 Each change type has defaults that the `ops:` entry may tighten:
 
@@ -192,7 +193,7 @@ These go into the `ops:` blocks, not into code.
   enum); `mullvad-select` script (iran-mullvad); restart `x-ui.service`
   (france-exit); Remnawave restart/disable/enable for Local-Node and
   Iran-Mullvad.
-- **Never restartable** (entries marked `never_restart: true`, and validate
+- **Never restartable** (entries marked `never_restart: true`; validate
   refuses `restart: true` next to it, so nobody adds it by accident): `realm.service`
   (relay-1), container `backend-app-1` (xbridger-node-3), `remnawave-db`,
   `remnawave-redis`. The `remnanode` container only via `rw.node-restart`.

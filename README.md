@@ -43,8 +43,10 @@ also available as CLI output (`--json`) for an agent.
 | `schema/` | JSON schemas generated from `pkg/topology` (editors + agents) |
 | `pkg/topology` | the only YAML loader/validator, collector catalog, alert-expression parser, bundle |
 | `pkg/protocol`, `pkg/agentcfg`, `pkg/redact` | push payload, agent config, redaction |
+| `pkg/ops`, `pkg/sysexec` | closed ops action types, request format, runner config; shared safe exec |
 | `apps/cli` | `vpnmap` |
 | `apps/agent` | `vpnmap-agent` + `deploy/` (systemd units, install/uninstall, example local checks) — see `apps/agent/README.md` |
+| `apps/ops-runner` | `vpnmap-ops`, the forced-command runner for ops actions + `deploy/` (install/uninstall, example action scripts) |
 | `apps/hub` | NestJS hub; `src/engine` is pure evaluation logic, `src/sim` the demo simulator |
 | `apps/web` | Nuxt 3 SPA (Vue Flow, Tailwind, ECharts), types from `apps/hub/src/contract.ts` |
 | `CLAUDE.md`, `.claude/skills/` | how an agent works here: `add-component`, `diagnose-outage` |
@@ -205,6 +207,36 @@ Persian from the same facts as the board.
 - Privacy: questions and the board facts the model looks up (names, IPs,
   users, events) go to OpenRouter and the model's provider. Secrets are not
   part of the board data.
+
+### Ops actions (closed catalog, owner-approved)
+
+Spec: [`docs/ops-actions.md`](docs/ops-actions.md). An approver can ask the
+assistant to look at or fix something on a server. It has no shell:
+
+- **Closed types, open data.** The action types (`vpnmap ops types`) are code
+  in `pkg/ops`: container/unit status and restart, log tail, disk, TCP check,
+  connection count, WireGuard handshakes, declared read/change scripts, and
+  Remnawave node restart/enable/disable. What each may touch on a server is
+  the node's `ops:` block plus what its checks already declare (`vpnmap ops
+  show`). A new server, container or script is a YAML change, not code.
+- **Enforced on the server.** `vpnmap-ops` is the forced command of the hub's
+  key (`restrict,command="/usr/local/bin/vpnmap-ops serve"`; no `from=`,
+  because the hub's egress changes with the VPN it uses). It validates every
+  request against its root-owned `/etc/vpnmap-ops/ops.yaml`, re-runs itself
+  through the single sudoers entry `vpnmap-ops exec`, validates again,
+  applies cooldowns, runs a fixed argv (never a shell) and logs each call to
+  `/var/log/vpnmap-ops.log`.
+- **Reads** (`ops_read`) run at once; output is redacted, capped and handed
+  to the model as untrusted data. **Changes** (`ops_propose`) become a plan
+  an approver must tap Approve on in Telegram within 10 minutes; plans that
+  cut paying users need a second tap. The hub's executor runs it,
+  re-validating each step, reading the state its rollback needs first, and
+  rolling back when a step fails or the map gets worse. `/stop` and the
+  board's kill switch halt it before the next step.
+- **Ops panel** on the board: on/off, model, approvers, per-server access,
+  host-key fingerprint (required before the first connection), whether the
+  runner's config matches the map, and the install commands to run yourself.
+- Disabled in demo mode (no login there).
 
 ### Pictures of the board
 
