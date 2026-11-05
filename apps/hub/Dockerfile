@@ -30,6 +30,7 @@ RUN go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/vpnma
       (cd /out/agent && sha256sum vpnmap-ops-linux-$arch | cut -d' ' -f1 > vpnmap-ops-linux-$arch.sha256); \
     done \
  && cp apps/ops-runner/deploy/install.sh /out/agent/ops-install.sh && cp apps/ops-runner/deploy/uninstall.sh /out/agent/ops-uninstall.sh \
+ && (cd /out/agent && sha256sum ops-install.sh | cut -d' ' -f1 > ops-install.sh.sha256) \
  && for f in apps/ops-runner/deploy/actions.d/*; do \
       id=$(basename "$f"); cp "$f" /out/agent/ops-action-$id; \
       (cd /out/agent && sha256sum ops-action-$id | cut -d' ' -f1 > ops-action-$id.sha256); \

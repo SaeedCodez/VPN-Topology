@@ -17,9 +17,12 @@ export function policyFor(bundle: Bundle, node: string): OpsNodePolicy | undefin
   return (bundle.ops ?? []).find((p) => p.node === node);
 }
 
-/** Model-written text shown in Telegram: one line-ish, no control chars, capped. */
+/**
+ * Model-written text shown in Telegram: one line (so it cannot imitate the
+ * step blocks), no control or bidi characters, capped.
+ */
 export function cleanText(v: unknown, what: string, required = true): string {
-  const s = typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000b-\u001f\u007f​-‏‪-‮⁦-⁩]/g, '').trim() : '';
+  const s = typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim() : '';
   if (required && !s) throw new Error(`${what} is required`);
   if (s.length > MAX_TEXT) throw new Error(`${what} is longer than ${MAX_TEXT} characters`);
   return s;
@@ -42,7 +45,7 @@ function substitute(tpl: Record<string, string> | undefined, args: Record<string
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(tpl ?? {})) {
     const m = /^\{([a-z][a-z0-9_]*)\}$/.exec(v);
-    out[k] = m && m[1] in args ? args[m[1]] : v;
+    out[k] = m && Object.hasOwn(args, m[1]) ? args[m[1]] : v;
   }
   return out;
 }
@@ -51,7 +54,7 @@ function substitute(tpl: Record<string, string> | undefined, args: Record<string
  * Validates one action on one node. `kind` restricts it to reads (the read
  * tool) or changes (plan steps). Returns the canonical step.
  */
-export function validateStep(bundle: Bundle, input: OpsStepInput, kind: 'read' | 'change'): OpsStep {
+export function validateStep(bundle: Bundle, input: OpsStepInput, kind: 'read' | 'change', nested = false): OpsStep {
   if (!input || typeof input !== 'object') throw new Error('step must be an object {node, type, args}');
   const where = `step ${input.node}/${input.type}`;
   if (!validToken(input.node)) throw new Error(`${where}: bad node id`);
@@ -78,6 +81,7 @@ export function validateStep(bundle: Bundle, input: OpsStepInput, kind: 'read' |
     readBefore: null,
   };
   let disruptive = t.disruptive;
+  let rollbackDisruptive = false;
 
   if (t.where === 'remnawave') {
     if (t.params?.length) {
@@ -90,7 +94,10 @@ export function validateStep(bundle: Bundle, input: OpsStepInput, kind: 'read' |
     }
     step.line = formatRequest({ type: t.name, args: step.args, id: '' });
     step.cooldownS = parseGoDuration(t.cooldown ?? '');
-    if (t.rollback) step.rollback = { type: t.rollback, args: { ...step.args } };
+    if (t.rollback) {
+      step.rollback = { type: t.rollback, args: { ...step.args } };
+      rollbackDisruptive = !!typeByName(t.rollback)?.disruptive;
+    }
   } else {
     if (!p.runner || !p.config) throw new Error(`${where}: ${p.node} has no runner (ops.runner: true)`);
     const a = allow(p.config, { type: t.name, args, id: '' });
@@ -101,28 +108,35 @@ export function validateStep(bundle: Bundle, input: OpsStepInput, kind: 'read' |
       step.title = sp?.title || `${t.title}: ${a.script.id}`;
       if (sp) {
         disruptive = t.kind === 'change' ? sp.disruptive : false;
-        for (const v of sp.verify ?? []) step.verify.push(v.replace(/\{([a-z][a-z0-9_]*)\}/g, (_, k) => args[k] ?? `{${k}}`));
+        for (const v of sp.verify ?? []) step.verify.push(v.replace(/\{([a-z][a-z0-9_]*)\}/g, (_, k) => (Object.hasOwn(args, k) ? args[k] : `{${k}}`)));
         if (sp.read_before) step.readBefore = { type: 'script.read', args: { script: sp.read_before.script, ...substitute(sp.read_before.args, args) } };
-        if (sp.rollback) step.rollback = { type: 'script.change', args: { script: sp.rollback.script, ...substitute(sp.rollback.args, args) } };
+        if (sp.rollback) {
+          step.rollback = { type: 'script.change', args: { script: sp.rollback.script, ...substitute(sp.rollback.args, args) } };
+          rollbackDisruptive = (p.scripts ?? []).find((s) => s.id === sp.rollback!.script)?.disruptive ?? true;
+        }
       }
     }
   }
   step.verify = [...new Set(step.verify)];
   step.reversible = !!step.rollback;
-  if (t.kind === 'change' && disruptive && p.cuts_users) {
+  // A step whose rollback would cut paying users counts as cutting them too
+  // (enable is harmless, but its automatic rollback disables the node).
+  if (t.kind === 'change' && (disruptive || rollbackDisruptive) && p.cuts_users) {
     step.cutsUsers = true;
     step.cutRoutes = p.cut_routes ?? [];
   }
   // A read_before must itself be an allowed read on this node.
-  if (step.readBefore) validateStep(bundle, { node: p.node, ...step.readBefore }, 'read');
+  // (nested: a rollback's own rollback is not checked again; disable <-> enable would loop.)
+  if (nested) return step;
+  if (step.readBefore) validateStep(bundle, { node: p.node, ...step.readBefore }, 'read', true);
   // A rollback must be allowed too, except for values only known after read_before.
   if (step.rollback && !Object.values(step.rollback.args).some((v) => v.startsWith('{before.'))) {
-    validateStep(bundle, { node: p.node, ...step.rollback }, 'change');
+    validateStep(bundle, { node: p.node, ...step.rollback }, 'change', true);
   }
   return step;
 }
 
-/** Fills {before.<field>} in a rollback from the read_before JSON output. */
+/** Fills {before.<field>} in a rollback from the read_before JSON output (stdout only). */
 export function fillRollback(rb: { type: string; args: Record<string, string> }, beforeOutput: string): { type: string; args: Record<string, string> } {
   let before: Record<string, unknown> = {};
   try {
@@ -138,7 +152,7 @@ export function fillRollback(rb: { type: string; args: Record<string, string> },
       args[k] = v;
       continue;
     }
-    const val = before[m[1]];
+    const val = Object.hasOwn(before, m[1]) ? before[m[1]] : undefined;
     if (!validToken(val)) throw new Error(`read_before field ${m[1]} is missing or not a valid value`);
     args[k] = val;
   }
@@ -174,7 +188,8 @@ export function planHash(plan: OpsPlan): string {
   return createHash('sha256').update(stable(plan)).digest('hex');
 }
 
-function stable(v: unknown): string {
+/** Canonical JSON (keys sorted at every level). */
+export function stable(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`;
   if (v && typeof v === 'object') {
     return `{${Object.keys(v as object)

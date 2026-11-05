@@ -336,7 +336,12 @@ export class ApiController {
   }
 
   @Put('ops')
-  async updateOps(@Body() body: OpsPatch & { by?: string }) {
+  async updateOps(@Body() body: OpsPatch & { by?: string }, @Req() req: any) {
+    // Approvers, access, host keys and the accepted policy decide who can
+    // change a server: only the owner's login session, never the CLI token.
+    // The kill switch alone is allowed with any credential.
+    const killOnly = body && Object.keys(body).filter((k) => k !== 'by').length === 1 && body.enabled === false;
+    if (!killOnly && !this.auth.isAdminSession(req)) throw new UnauthorizedException('changing ops settings needs the board login (password + TOTP), not a token');
     try {
       const { by, ...patch } = body ?? {};
       const v = await this.hub.ops.update(patch, String(by ?? 'board').slice(0, 64));
@@ -348,7 +353,8 @@ export class ApiController {
   }
 
   @Get('ops/servers/:node/grant')
-  opsGrant(@Param('node') node: string) {
+  opsGrant(@Param('node') node: string, @Req() req: any) {
+    if (!this.auth.isAdminSession(req)) throw new UnauthorizedException('needs the board login (password + TOTP)');
     if (this.hub.cfg.mode === 'demo') throw new BadRequestException('ops actions are disabled in demo mode');
     const g = this.hub.ops.grantFor(node);
     if (!g) throw new NotFoundException(`${node} has no runner, or ops has no SSH key yet (switch ops on first)`);

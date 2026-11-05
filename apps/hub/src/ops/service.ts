@@ -3,11 +3,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Bundle, Health, OpsPlan, OpsPlanInput, OpsSettingsView, OpsStep, OpsStepInput, OpsStepLog, OpsTaskView } from '../contract';
 import { HubService } from '../hub.service';
+import { esc } from '../engine/notify';
 import { typeByName } from './catalog';
 import { ExecEnv, runPlan, StepResult } from './executor';
 import { planHash, policyFor, validatePlan, validateStep } from './plan';
 import { remnawave, RwClient } from './remnawave';
-import { applyOpsPatch, grantCommands, OPS_DEFAULTS, OPS_KEY, OpsPatch, opsKeyOpenSsh, opsPrivateKey, serverReachable, serverView, StoredOps } from './settings';
+import { applyOpsPatch, grantCommands, OPS_DEFAULTS, OPS_KEY, OpsPatch, opsKeyOpenSsh, opsPrivateKey, policyHash, serverReachable, serverView, StoredOps } from './settings';
 import { OPS_USER, sshSend, SshSend } from './ssh';
 import { approvalMessages, changelogLine, closedText, confirmCutText, resultText, runningText, statusFa } from './text';
 import { isOpsTool, OPS_TOOLS, OpsToolEnv, runOpsTool } from './tools';
@@ -59,6 +60,20 @@ export class OpsService {
     const stored = (await this.hub.db.getSetting<StoredOps>(OPS_KEY)) ?? null;
     this.settings = { ...OPS_DEFAULTS, ...(stored ?? {}), servers: { ...((stored?.servers as any) ?? {}) } };
     if (Array.isArray((stored as any)?.servers)) this.settings.servers = {}; // old registry format
+    // A hub restart in the middle of a plan: its rollback can no longer run, so say so.
+    for (const t of await this.hub.db.recentOpsTasks(50)) {
+      if (t.status !== 'approved' && t.status !== 'running') continue;
+      if (await this.hub.db.transitionOpsTask(t.id, t.status, 'failed', { outcome: 'hub restarted during the plan; nothing was rolled back, check the servers by hand' })) {
+        this.event(`Ops plan interrupted: ${(t.plan as OpsPlan).title}`, 'hub restarted during the plan; check by hand', 'warning', t.id);
+        const tg = this.hub.telegram;
+        if (tg && t.chatId) await tg.call('sendMessage', { chat_id: t.chatId, text: `⚠️ <b>اجرای پلن قطع شد</b>\n${esc((t.plan as OpsPlan).title)}\nهاب وسط اجرا ری‌استارت شد؛ هیچ مرحله‌ای برگردانده نشد. وضعیت سرورها را دستی بررسی کنید.`, parse_mode: 'HTML' });
+      }
+    }
+  }
+
+  /** Change actions need the owner to have accepted the applied ops policy. */
+  private policyOk(): boolean {
+    return !!this.settings.acceptedPolicy && this.settings.acceptedPolicy === policyHash(this.bundle());
   }
 
   private persist() {
@@ -82,6 +97,8 @@ export class OpsService {
       remnawave: (b.ops ?? []).filter((p) => p.remnawave).map((p) => ({ node: p.node, name: p.remnawave!.name, actions: p.remnawave!.actions })),
       running: this.running,
       demo: this.demo,
+      policyHash: policyHash(b),
+      policyAccepted: this.policyOk(),
     };
   }
 
@@ -135,7 +152,7 @@ export class OpsService {
     return { defs: OPS_TOOLS, isOpsTool, run: (name: string, args: string) => runOpsTool(name, args, env) };
   }
 
-  /** One catalog read (no approval). */
+  /** One catalog read (no approval). Reads run under the applied policy; the runner config bounds them anyway. */
   async read(input: OpsStepInput): Promise<StepResult> {
     this.assertLive();
     if (!this.settings.enabled) return { ok: false, output: '', error: 'ops is switched off' };
@@ -145,22 +162,26 @@ export class OpsService {
 
   // ---------------------------------------------------------------- running one action
 
-  private async execute(step: OpsStep): Promise<StepResult> {
-    if (step.where === 'remnawave') return this.executeRemnawave(step);
-    const p = policyFor(this.bundle(), step.node);
-    if (!p?.runner || !p.config_hash) return { ok: false, output: '', error: `${step.node} has no runner` };
-    if (!serverReachable(this.settings, step.node, this.now())) return { ok: false, output: '', error: `access to ${step.node} is off (Ops panel)` };
+  private async execute(step: OpsStep, opts: { rollback?: boolean } = {}): Promise<StepResult> {
     const t = typeByName(step.type)!;
+    const notRun = (error: string): StepResult => ({ ok: false, output: '', error, notRun: true });
+    if (t.kind === 'change' && !this.policyOk()) return notRun('the ops policy changed since the owner accepted it (Ops panel → Accept)');
+    if (step.where === 'remnawave') return this.executeRemnawave(step, opts);
+    const p = policyFor(this.bundle(), step.node);
+    if (!p?.runner || !p.config_hash) return notRun(`${step.node} has no runner`);
+    if (!serverReachable(this.settings, step.node, this.now())) return notRun(`access to ${step.node} is off (Ops panel)`);
     if (t.kind === 'change') {
       // Never change a server whose runner config differs from the map.
       const ping = await this.send(step.node, 'ping');
-      if (!ping.ok) return ping;
+      if (!ping.ok) return { ...ping, notRun: true };
       const srv = this.settings.servers[step.node];
       if (srv?.reportedConfig !== p.config_hash) {
-        return { ok: false, output: '', error: `runner config on ${step.node} is ${srv?.reportedConfig ?? 'unknown'}, the map expects ${p.config_hash}: install the new ops.yaml first` };
+        return notRun(`runner config on ${step.node} is ${srv?.reportedConfig ?? 'unknown'}, the map expects ${p.config_hash}: install the new ops.yaml first`);
       }
-      const left = await this.cooldownLeft(step);
-      if (left > 0) return { ok: false, output: '', error: `cooldown: ${step.line} ran recently; wait ${Math.ceil(left / 60)} min` };
+      if (!opts.rollback) {
+        const left = await this.cooldownLeft(step);
+        if (left > 0) return notRun(`cooldown: ${step.line} ran recently; wait ${Math.ceil(left / 60)} min`);
+      }
     }
     return this.send(step.node, step.line);
   }
@@ -185,10 +206,18 @@ export class OpsService {
     state.lastError = resp.ok ? undefined : resp.error;
     if (resp.config_hash) state.reportedConfig = resp.config_hash;
     await this.persist();
-    return { ok: resp.ok, output: resp.output ?? '', error: resp.ok ? undefined : resp.error ?? `exit ${resp.exit_code}` };
+    const stdout = resp.output ?? '';
+    return {
+      ok: resp.ok,
+      stdout,
+      output: resp.stderr ? `${stdout}\n[stderr]\n${resp.stderr}` : stdout,
+      error: resp.ok ? undefined : resp.error ?? `exit ${resp.exit_code}`,
+      // The runner refused it (catalog or cooldown) before running anything.
+      notRun: !resp.ok && resp.exit_code === 0 && !!resp.error,
+    };
   }
 
-  private async executeRemnawave(step: OpsStep): Promise<StepResult> {
+  private async executeRemnawave(step: OpsStep, opts: { rollback?: boolean } = {}): Promise<StepResult> {
     try {
       const rw = this.rw();
       if (step.type === 'rw.nodes') {
@@ -198,9 +227,11 @@ export class OpsService {
       if (step.type === 'rw.system') return { ok: true, output: JSON.stringify(await rw.systemStats()) };
       const p = policyFor(this.bundle(), step.node);
       const verb = step.type.replace('rw.node-', '') as 'restart' | 'enable' | 'disable';
-      if (!p?.remnawave?.actions.includes(step.type)) return { ok: false, output: '', error: `${step.type} is not allowed for ${step.node}` };
-      const left = await this.cooldownLeft(step);
-      if (left > 0) return { ok: false, output: '', error: `cooldown: ${step.line} ran recently; wait ${Math.ceil(left / 60)} min` };
+      if (!p?.remnawave?.actions.includes(step.type)) return { ok: false, output: '', error: `${step.type} is not allowed for ${step.node}`, notRun: true };
+      if (!opts.rollback) {
+        const left = await this.cooldownLeft(step);
+        if (left > 0) return { ok: false, output: '', error: `cooldown: ${step.line} ran recently; wait ${Math.ceil(left / 60)} min`, notRun: true };
+      }
       const r = await rw.nodeAction(p.remnawave.name, verb);
       return { ok: r.ok, output: r.detail };
     } catch (e: any) {
@@ -208,14 +239,19 @@ export class OpsService {
     }
   }
 
-  /** Seconds left of the step's cooldown, from the steps the hub ran (the runner checks too). */
-  private async cooldownLeft(step: OpsStep): Promise<number> {
+  /**
+   * Seconds left of the step's cooldown, from what the hub ran (the runner
+   * checks too). `prefix` matches any arguments of the same type and script,
+   * which is how a rollback whose arguments are only known later is checked.
+   */
+  private async cooldownLeft(step: OpsStep, prefix = false): Promise<number> {
     if (!step.cooldownS) return 0;
     const since = this.now() - step.cooldownS * 1000;
+    const same = (line: string) => (prefix ? sameAction(line, step.line) : line === step.line);
     let last = 0;
     for (const t of await this.hub.db.opsTasksSince(this.now() - 24 * 3_600_000)) {
       for (const l of (t.log ?? []) as OpsStepLog[]) {
-        if (l.node === step.node && l.line === step.line && (l.status === 'ok' || l.status === 'failed' || l.status === 'rolled-back')) {
+        if (l.node === step.node && same(l.line) && (l.status === 'ok' || l.status === 'failed' || l.status === 'rolled-back')) {
           last = Math.max(last, Date.parse(l.at));
         }
       }
@@ -228,10 +264,17 @@ export class OpsService {
   async propose(input: OpsPlanInput, requestedBy: string, chatId: string): Promise<{ taskId: string }> {
     this.assertLive();
     if (!this.settings.enabled) throw new Error('ops is switched off');
+    if (!this.policyOk()) throw new Error('the ops policy changed since the owner accepted it; ask the owner to review and accept it in the Ops panel');
     const plan = validatePlan(this.bundle(), input);
     for (const s of plan.steps) {
       const left = await this.cooldownLeft(s);
       if (left > 0) throw new Error(`cooldown: ${s.node} ${s.line} ran recently; wait ${Math.ceil(left / 60)} min`);
+      // The rollback must not be stuck behind its own cooldown on the server.
+      if (s.rollback) {
+        const rb = { ...s, type: s.rollback.type, line: [s.rollback.type, ...Object.keys(s.rollback.args).sort().map((k) => `${k}=${s.rollback!.args[k]}`)].join(' '), cooldownS: s.cooldownS };
+        const rl = await this.cooldownLeft(rb, true);
+        if (rl > 0) throw new Error(`the rollback of ${s.node} ${s.line} is in its cooldown for ${Math.ceil(rl / 60)} more min; wait so it can roll back if needed`);
+      }
       if (s.where === 'server' && !serverReachable(this.settings, s.node, this.now())) throw new Error(`access to ${s.node} is off; ask the owner to switch it on in the Ops panel`);
     }
     const id = randomUUID();
@@ -282,6 +325,7 @@ export class OpsService {
       return 'لغو شد.';
     }
     if (!this.settings.enabled) return 'Ops خاموش است.';
+    if (!this.policyOk()) return 'سیاست Ops تغییر کرده و هنوز در پنل تأیید نشده است.';
     if (planHash(plan) !== task.hash) return 'پلن ذخیره‌شده تغییر کرده؛ اجرا نمی‌شود.';
     if (action === 'a' && task.status === 'pending' && plan.cutsUsers) {
       // Second tap from the same approver for plans that cut paying users.
@@ -302,9 +346,13 @@ export class OpsService {
     if (action === 'y' && (task.status !== 'confirming' || task.approvedBy !== fromId)) return 'تأیید دوم باید از همان تأییدکننده باشد.';
     if (action === 'a' && plan.cutsUsers) return 'برای این پلن «بله، قطع شود» را بزنید.';
     if (this.running) return 'یک کار دیگر در حال اجراست؛ کمی بعد دوباره بزنید.';
-    // Atomic: exactly one tap wins, and only for the hash that was shown.
-    if (!(await this.hub.db.transitionOpsTask(id, from, 'approved', { approvedBy: fromId, hash: task.hash }))) return 'قبلاً تأیید یا بسته شده است.';
+    // Claim the runner slot before awaiting, so two different plans never run together.
     this.running = id;
+    // Atomic: exactly one tap wins, and only for the hash that was shown.
+    if (!(await this.hub.db.transitionOpsTask(id, from, 'approved', { approvedBy: fromId, hash: task.hash }))) {
+      this.running = null;
+      return 'قبلاً تأیید یا بسته شده است.';
+    }
     void this.runTask(id, fromId, task.hash);
     return 'تأیید شد؛ در حال اجرا…';
   }
@@ -324,7 +372,7 @@ export class OpsService {
       const log: OpsStepLog[] = [];
       const env: ExecEnv = {
         revalidate: (node, s) => validateStep(this.bundle(), { node, type: s.type, args: s.args }, typeByName(s.type)?.kind === 'read' ? 'read' : 'change'),
-        run: (step) => this.execute(step),
+        run: (step, o) => this.execute(step, o),
         verify: (ids) => this.verifyStatuses(ids),
         settle: () => sleep(this.opts.settleMs ?? Math.min((this.hub.cfg.tickMs ?? 15_000) * 2, 90_000)),
         hashOk: async () => {
@@ -378,10 +426,13 @@ export class OpsService {
     return out;
   }
 
+  /** Edits the last message and removes the buttons from the earlier ones. */
   private async editLast(chatId: string | null | undefined, messageIds: number[] | undefined, text: string) {
     const tg = this.hub.telegram;
-    const mid = messageIds?.[messageIds.length - 1];
+    const ids = messageIds ?? [];
+    const mid = ids[ids.length - 1];
     if (!tg || !chatId || !mid) return;
+    for (const other of ids.slice(0, -1)) await tg.call('editMessageReplyMarkup', { chat_id: chatId, message_id: other, reply_markup: { inline_keyboard: [] } });
     await tg.call('editMessageText', { chat_id: chatId, message_id: mid, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
   }
 
@@ -416,6 +467,8 @@ export class OpsService {
       hubUrl: this.hub.cfg.publicUrl,
       node,
       config: p.config,
+      configHash: p.config_hash ?? '',
+      installSha: sha('ops-install.sh.sha256'),
       publicKey: pub,
       binarySha: { amd64: sha('vpnmap-ops-linux-amd64.sha256'), arm64: sha('vpnmap-ops-linux-arm64.sha256') },
       actions: (p.config.scripts ?? []).map((s) => ({ id: s.id, sha: sha(`ops-action-${s.id}.sha256`) })),
@@ -425,6 +478,15 @@ export class OpsService {
   async tasks(): Promise<OpsTaskView[]> {
     return (await this.hub.db.recentOpsTasks(30)).map((t) => taskView(t, this.now()));
   }
+}
+
+/** Same type and script (any other arguments). */
+function sameAction(a: string, b: string): boolean {
+  const key = (l: string) => {
+    const parts = l.split(' ');
+    return [parts[0], ...parts.filter((p) => p.startsWith('script='))].join(' ');
+  };
+  return key(a) === key(b);
 }
 
 function sleep(ms: number): Promise<void> {

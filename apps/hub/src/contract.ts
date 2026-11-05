@@ -513,7 +513,8 @@ export interface OpsStepLog {
   index: number;
   node: string;
   line: string;
-  status: 'ok' | 'failed' | 'rolled-back' | 'skipped' | 'rollback';
+  /** not-run: refused before anything was sent to the server (does not count for cooldowns). */
+  status: 'ok' | 'failed' | 'rolled-back' | 'skipped' | 'not-run';
   output: string;
   at: string;
 }
@@ -563,6 +564,9 @@ export interface OpsSettingsView {
   servers: OpsServerView[];
   remnawave: { node: string; name: string; actions: string[] }[];
   running: string | null;
-  /** In demo mode ops runs against the simulator and never opens SSH. */
+  /** Ops is disabled in demo mode (no login). */
   demo: boolean;
+  /** Hash of the applied ops policy, and whether the owner accepted it (changes need that). */
+  policyHash: string;
+  policyAccepted: boolean;
 }

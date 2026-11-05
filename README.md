@@ -236,6 +236,12 @@ assistant to look at or fix something on a server. It has no shell:
 - **Ops panel** on the board: on/off, model, approvers, per-server access,
   host-key fingerprint (required before the first connection), whether the
   runner's config matches the map, and the install commands to run yourself.
+- Only the board login (password + TOTP) changes approvers, access, host keys
+  or accepts the policy; the CLI token cannot. After any topology apply that
+  changes an `ops:` block, change actions stay blocked until you press
+  *Accept policy* in the panel.
+- The Telegram relay Worker is part of the approval path: protect that
+  Cloudflare account and set the Worker's `BOT_ID`.
 - Disabled in demo mode (no login there).
 
 ### Pictures of the board

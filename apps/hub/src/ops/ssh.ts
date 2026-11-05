@@ -28,6 +28,7 @@ export interface RunnerResponse {
   req?: string;
   exit_code?: number;
   output?: string;
+  stderr?: string;
   truncated?: boolean;
   error?: string;
   duration_ms?: number;
@@ -91,6 +92,7 @@ export const sshSend: SshSend = (target, privateKey, line, opts = {}) =>
             const j = JSON.parse(lastLine) as RunnerResponse;
             if (typeof j !== 'object' || j === null || typeof j.ok !== 'boolean') throw new Error('bad answer');
             j.output = redact(String(j.output ?? ''));
+            j.stderr = j.stderr ? redact(String(j.stderr)) : undefined;
             j.error = j.error ? redact(String(j.error)) : undefined;
             finish({ answered: true, response: j });
           } catch {

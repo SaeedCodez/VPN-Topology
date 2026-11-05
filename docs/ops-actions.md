@@ -184,6 +184,34 @@ is broken (France).
 - Ops endpoints require auth even in demo mode; in demo mode the executor
   talks to the simulator, never SSH.
 
+### Trust boundaries (from the security review, 2026-11-05)
+
+- **Only the owner's board login changes who and what.** Approvers, access,
+  host keys, key rotation and accepting the policy need the password+TOTP
+  session; the CLI token (which agents hold) gets 401. The kill switch works
+  with any credential.
+- **The applied policy must be accepted.** A `vpnmap apply` can be done with
+  the CLI token, so any change to the resolved `ops:` blocks (hash shown in the
+  Ops panel) blocks every change action until the owner presses *Accept
+  policy* after reviewing `vpnmap ops show`. Reads keep working; the runner
+  config on each server bounds them anyway.
+- **The executor runs what was approved, exactly.** Each step is re-validated
+  and must resolve to the identical step (line, rollback, read-before, verify,
+  cut warning); otherwise it does not run.
+- **Rollbacks are not blocked by the hub's cooldown**; a plan is refused when a
+  step's rollback is still in its own cooldown, so it can always roll back.
+  The runner waits for a running change (one per server) instead of refusing.
+- **A step that only enables something still counts as cutting users** when its
+  automatic rollback would cut them.
+- **Logs** readable through ops are `*.log` files outside `/etc`, `/root`,
+  `/home`, `/proc`, `/sys`, `/dev`, `/boot`, `/run`, `/tmp` and
+  `/var/lib/docker`, never through a symlinked directory.
+- **The Telegram relay is part of the approval path.** Whoever controls the
+  Cloudflare Worker (or the bot token) could forge a button tap. Keep the
+  Worker account protected and set its `BOT_ID`.
+- **A hub restart during a plan** marks it failed and tells the chat; nothing is
+  rolled back automatically then.
+
 ## 6. Initial data (interview 2026-11-05)
 
 These go into the `ops:` blocks, not into code.

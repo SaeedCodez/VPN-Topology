@@ -194,8 +194,9 @@ func execRoot(stdin io.Reader, stdout io.Writer) int {
 		Cfg: cfg, Exec: sysexec.Exec{}, ScriptDir: ops.ScriptDir, StateDir: StateDir, AuditPath: AuditPath,
 		Now: time.Now, Dial: (&net.Dialer{}).DialContext, Peer: peer,
 		CheckTrust: func(p string) error { return trustedFile(p, 0) },
+		LockWait:   ops.MaxScriptTimeout + 10*time.Second,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), ops.MaxScriptTimeout+30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*ops.MaxScriptTimeout+40*time.Second)
 	defer cancel()
 	resp := r.Handle(ctx, strings.TrimSuffix(line, "\n"))
 	writeJSON(stdout, resp)

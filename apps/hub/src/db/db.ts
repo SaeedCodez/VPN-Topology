@@ -284,7 +284,7 @@ export class Db {
 
   /** Finished change steps since `sinceMs` (for hub-side cooldowns). */
   async opsTasksSince(sinceMs: number): Promise<OpsTaskRow[]> {
-    const rows = await this.db.select().from(s.opsTasks).where(gte(s.opsTasks.createdAt, new Date(sinceMs))).orderBy(desc(s.opsTasks.createdAt)).limit(500);
+    const rows = await this.db.select().from(s.opsTasks).where(gte(s.opsTasks.createdAt, new Date(sinceMs))).orderBy(desc(s.opsTasks.createdAt)).limit(10_000);
     return rows.map(toOpsRow);
   }
 

@@ -271,7 +271,9 @@ func runnerConfig(b *Bundle, n *Node, p *ops.NodePolicy, errf func(fix, format s
 				}
 			}
 		case "log-match":
-			if host == n.ID && c.ID != "" {
+			// Only files that may be read through ops at all (*.log outside
+			// key/credential places); other log-match checks stay agent-only.
+			if host == n.ID && c.ID != "" && ops.ValidLogPath(c.Str("path")) == nil {
 				if old, ok := logs[c.ID]; ok && old != c.Str("path") {
 					errf("give the ops log another id", "log id %q is also a log-match check with another path", c.ID)
 				}

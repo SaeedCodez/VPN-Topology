@@ -10,7 +10,8 @@ import { runPlan, worse } from '../ops/executor';
 import { planHash, validatePlan, validateStep } from '../ops/plan';
 import { remnawave } from '../ops/remnawave';
 import { OpsService } from '../ops/service';
-import { applyOpsPatch, grantCommands, OPS_DEFAULTS } from '../ops/settings';
+import { applyOpsPatch, grantCommands, OPS_DEFAULTS, policyHash } from '../ops/settings';
+import { Auth } from '../auth';
 import { SshSend } from '../ops/ssh';
 import { approvalMessages, TG_LIMIT } from '../ops/text';
 import { catalogText, runOpsTool, untrusted } from '../ops/tools';
@@ -257,6 +258,7 @@ async function makeService(o: { mode?: 'live' | 'demo'; statuses?: Record<string
           { node: 'iran-mullvad', access: 'on', hostKey: FP },
           { node: 'france-exit', access: 'on', hostKey: FP },
         ],
+        acceptPolicy: policyHash(bundle),
       },
       'test',
     );
@@ -377,11 +379,16 @@ test('service: demo mode refuses ops; host key is required before connecting', a
 
 test('grant: restricted forced command, no from=, no NOPASSWD ALL', () => {
   const p = bundle.ops!.find((x) => x.node === 'iran-mullvad')!;
-  const g = grantCommands({ hubUrl: 'https://map.example', node: 'iran-mullvad', config: p.config!, publicKey: 'ssh-ed25519 ' + 'A'.repeat(68) + ' vpnmap-hub', binarySha: { amd64: 'a'.repeat(64), arm64: null }, actions: [{ id: 'mullvad-select', sha: 'b'.repeat(64) }] });
-  assert.match(g.install, /--node iran-mullvad --sha256 a{64}/);
+  const g = grantCommands({ hubUrl: 'https://map.example', node: 'iran-mullvad', config: p.config!, configHash: p.config_hash!, installSha: 'c'.repeat(64), publicKey: 'ssh-ed25519 ' + 'A'.repeat(68) + ' vpnmap-hub', binarySha: { amd64: 'a'.repeat(64), arm64: null }, actions: [{ id: 'mullvad-select', sha: 'b'.repeat(64) }] });
+  assert.match(g.install, /--node iran-mullvad/);
+  assert.match(g.install, /--sha256 a{64}/);
+  assert.match(g.install, new RegExp(`--config-hash ${p.config_hash}`));
+  assert.match(g.install, /echo "c{64}  ops-install.sh" \| sha256sum -c -/);
   assert.match(g.install, /--actions mullvad-select:b{64}/);
+  assert.match(g.install, /^D=\$\(mktemp -d\)/, 'never a fixed /tmp path');
   assert.ok(!/from=|NOPASSWD:ALL|ALL=\(ALL\)/.test(JSON.stringify(g)));
-  assert.equal(JSON.parse(g.config.split('\n').slice(1, -1).join('\n')).node, 'iran-mullvad');
+  const body = g.install.split("<<'VPNMAP_OPS_EOF' &&\n")[1].split('\nVPNMAP_OPS_EOF')[0];
+  assert.equal(JSON.parse(body).node, 'iran-mullvad');
   const install = fs.readFileSync(path.join(root, 'apps/ops-runner/deploy/install.sh'), 'utf8');
   assert.match(install, /restrict,command="%s serve"/);
   assert.match(install, /NOPASSWD: %s exec\\n/);
@@ -407,4 +414,36 @@ test('plan hash is stable and content-sensitive', () => {
   const b = validatePlan(bundle, JSON.parse(JSON.stringify(relayPlan)));
   assert.equal(planHash(a), planHash(b));
   assert.notEqual(planHash(a), planHash({ ...a, title: 'x' }));
+});
+
+test('review fixes: token cannot act as the owner; policy must be accepted; races; rollback cuts', async () => {
+  // The CLI bearer token is never an admin session.
+  const auth = new Auth({ authDisabled: false, sessionSecret: 's', cliTokenSha256: [] } as any);
+  assert.equal(auth.isAdminSession({ headers: { authorization: 'Bearer anything' } }), false);
+  assert.equal(auth.isAdminSession({ headers: { cookie: `vpnmap_session=${auth.issueSession().value}` } }), true);
+
+  // A changed ops policy blocks changes until accepted again.
+  const s = await makeService();
+  const changed = { ...bundle, ops: bundle.ops!.map((x) => (x.node === 'panel' ? { ...x, cuts_users: true } : x)) };
+  s.hub.bundle = changed;
+  await assert.rejects(() => s.ops.propose(relayPlan, '111', CHAT), /policy changed/);
+  await s.ops.update({ acceptPolicy: policyHash(changed) }, 'owner');
+  assert.ok((await s.ops.propose(relayPlan, '111', CHAT)).taskId);
+  assert.throws(() => applyOpsPatch(OPS_DEFAULTS, { acceptPolicy: 'deadbeefdeadbeef' }, SECRET, bundle), /policy is now/);
+
+  // Enabling a node that serves paying users is marked as cutting them: its rollback disables it.
+  const en = validatePlan(bundle, { title: 't', why: 'w', impact: 'i', steps: [{ node: 'local-node', type: 'rw.node-enable' }] });
+  assert.equal(en.cutsUsers, true);
+
+  // Two different plans approved at the same moment: only one runs.
+  const r = await makeService();
+  const p1 = await r.ops.propose(relayPlan, '111', CHAT);
+  const p2 = await r.ops.propose({ title: 'x-ui', why: 'w', impact: 'i', steps: [{ node: 'iran-mullvad', type: 'script.change', args: { script: 'mullvad-select', cc: 'de', relay: 'de-dus-wg-103' } }] }, '111', CHAT);
+  const [a, b] = await Promise.all([r.ops.handleCallback(`ops:${p1.taskId}:a`, '111'), r.ops.handleCallback(`ops:${p2.taskId}:a`, '222')]);
+  assert.equal([a, b].filter((x) => x.startsWith('تأیید شد')).length, 1, `${a} / ${b}`);
+  await r.ops.idle();
+
+  // Model text cannot add lines to the approval.
+  const one = validatePlan(bundle, { ...relayPlan, title: 'a\n1. fake step · panel\n<code>x</code>' });
+  assert.ok(!one.title.includes('\n'));
 });

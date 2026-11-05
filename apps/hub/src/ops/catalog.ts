@@ -58,7 +58,7 @@ export function parseRequest(line: string): Request {
       continue;
     }
     if (!validToken(v)) throw new Error(`argument ${k}: value is not allowed (letters, digits and . _ @ : - only, at most ${MAX_TOKEN}, not starting with -)`);
-    if (k in r.args) throw new Error(`argument ${k} given twice`);
+    if (Object.hasOwn(r.args, k)) throw new Error(`argument ${k} given twice`);
     r.args[k] = v;
   }
   return r;
@@ -103,7 +103,7 @@ export function allow(cfg: OpsRunnerConfig, r: Request): Allowed {
   if (t.where !== 'server') throw new Error(`${t.name} does not run on a server`);
   const used = new Set<string>();
   const arg = (name: string) => {
-    if (!(name in r.args)) throw new Error(`${t.name}: missing argument ${name}`);
+    if (!Object.hasOwn(r.args, name)) throw new Error(`${t.name}: missing argument ${name}`);
     used.add(name);
     return r.args[name];
   };

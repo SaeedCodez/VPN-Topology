@@ -1,5 +1,5 @@
 import { Health, OpsPlan, OpsStep, OpsStepLog } from '../contract';
-import { fillRollback } from './plan';
+import { fillRollback, stable } from './plan';
 
 /**
  * The deterministic executor. It runs an approved, validated plan step by
@@ -12,14 +12,20 @@ import { fillRollback } from './plan';
 
 export interface StepResult {
   ok: boolean;
+  /** stdout, plus stderr under a marker (what the log and the model see). */
   output: string;
+  /** stdout alone (read_before is parsed from it). */
+  stdout?: string;
   error?: string;
+  /** Refused before anything reached the server. */
+  notRun?: boolean;
 }
 
 export interface ExecEnv {
   /** Re-validate a step (or a rollback) against the live topology; throws if no longer allowed. */
   revalidate(node: string, s: { type: string; args: Record<string, string> }): OpsStep;
-  run(step: OpsStep): Promise<StepResult>;
+  /** rollback: part of an approved plan's rollback (the hub skips its own cooldown; the runner still applies its own). */
+  run(step: OpsStep, opts?: { rollback?: boolean }): Promise<StepResult>;
   verify(ids: string[]): Promise<Map<string, Health>>;
   settle(): Promise<void>;
   /** true while the stored plan still has the approved hash. */
@@ -56,6 +62,7 @@ export async function runPlan(plan: OpsPlan, env: ExecEnv): Promise<ExecOutcome>
   const baseline = await env.verify(plan.verify);
   const done: { index: number; step: OpsStep; rollback: OpsStep | null }[] = [];
 
+  let failedRollbacks = 0;
   const rollBack = async (why: string): Promise<ExecOutcome['status']> => {
     let any = false;
     for (const d of [...done].reverse()) {
@@ -69,11 +76,12 @@ export async function runPlan(plan: OpsPlan, env: ExecEnv): Promise<ExecOutcome>
         await add({ index: d.index, node: d.step.node, line: d.rollback.line, status: 'failed', output: `rollback refused: ${e?.message ?? e}` });
         continue;
       }
-      const r = await env.run(rb).catch((e: any): StepResult => ({ ok: false, output: '', error: String(e?.message ?? e) }));
-      await add({ index: d.index, node: rb.node, line: rb.line, status: r.ok ? 'rolled-back' : 'failed', output: r.ok ? r.output : r.error ?? r.output });
+      const r = await env.run(rb, { rollback: true }).catch((e: any): StepResult => ({ ok: false, output: '', error: String(e?.message ?? e) }));
+      await add({ index: d.index, node: rb.node, line: rb.line, status: r.ok ? 'rolled-back' : r.notRun ? 'not-run' : 'failed', output: r.ok ? r.output : `ROLLBACK FAILED, check by hand: ${r.error ?? r.output}` });
+      if (!r.ok) failedRollbacks++;
     }
     void why;
-    return any ? 'rolled-back' : 'failed';
+    return any && !failedRollbacks ? 'rolled-back' : 'failed';
   };
 
   for (let i = 0; i < plan.steps.length; i++) {
@@ -89,9 +97,10 @@ export async function runPlan(plan: OpsPlan, env: ExecEnv): Promise<ExecOutcome>
     let step: OpsStep;
     try {
       step = env.revalidate(planned.node, planned);
-      if (step.line !== planned.line) throw new Error(`the step now resolves to "${step.line}"`);
+      // Everything the approver saw (rollback, read-before, verify, cut warning) must still hold.
+      if (stable(step) !== stable(planned)) throw new Error('the topology changed since approval; this step now resolves differently');
     } catch (e: any) {
-      await add({ index: i, node: planned.node, line: planned.line, status: 'failed', output: `refused: ${e?.message ?? e}` });
+      await add({ index: i, node: planned.node, line: planned.line, status: 'not-run', output: `refused: ${e?.message ?? e}` });
       const st = await rollBack('refused');
       return { status: st, outcome: `مرحله‌ی ${i + 1} دیگر مجاز نیست: ${e?.message ?? e}`, verify: [], log };
     }
@@ -105,11 +114,11 @@ export async function runPlan(plan: OpsPlan, env: ExecEnv): Promise<ExecOutcome>
           const rbStep = env.revalidate(step.node, step.readBefore);
           const r = await env.run(rbStep);
           if (!r.ok) throw new Error(r.error ?? 'read_before failed');
-          tpl = fillRollback(step.rollback, r.output);
+          tpl = fillRollback(step.rollback, r.stdout ?? r.output);
         }
         rollback = env.revalidate(step.node, tpl);
       } catch (e: any) {
-        await add({ index: i, node: step.node, line: step.line, status: 'failed', output: `not run: cannot prepare the rollback: ${e?.message ?? e}` });
+        await add({ index: i, node: step.node, line: step.line, status: 'not-run', output: `not run: cannot prepare the rollback: ${e?.message ?? e}` });
         const st = await rollBack('no-rollback');
         return { status: st, outcome: `مرحله‌ی ${i + 1} اجرا نشد چون بازگشت آن آماده نشد.`, verify: [], log };
       }
@@ -117,9 +126,9 @@ export async function runPlan(plan: OpsPlan, env: ExecEnv): Promise<ExecOutcome>
 
     await env.onProgress(`مرحله‌ی ${i + 1} از ${plan.steps.length}: ${step.title}`);
     const r = await env.run(step).catch((e: any): StepResult => ({ ok: false, output: '', error: String(e?.message ?? e) }));
-    await add({ index: i, node: step.node, line: step.line, status: r.ok ? 'ok' : 'failed', output: r.ok ? r.output : r.error ?? r.output });
-    // A failed step may have half-applied: its own rollback runs too.
-    done.push({ index: i, step, rollback });
+    await add({ index: i, node: step.node, line: step.line, status: r.ok ? 'ok' : r.notRun ? 'not-run' : 'failed', output: r.ok ? r.output : r.error ?? r.output });
+    // A failed step may have half-applied: its own rollback runs too (not when it never ran).
+    if (!r.notRun) done.push({ index: i, step, rollback });
     if (!r.ok) {
       const st = await rollBack('failed');
       return { status: st, outcome: `مرحله‌ی ${i + 1} ناموفق بود: ${(r.error ?? '').slice(0, 300)}`, verify: [], log };

@@ -176,7 +176,8 @@ func TestRunnerWGHidesKeys(t *testing.T) {
 }
 
 func TestRunnerLogTail(t *testing.T) {
-	dir := t.TempDir()
+	// The runner refuses symlinked parents; macOS's temp dir sits behind /var -> /private/var.
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
 	log := filepath.Join(dir, "w.log")
 	var b strings.Builder
 	for i := 0; i < 300; i++ {
@@ -279,5 +280,43 @@ func TestRepoScriptsHaveExamples(t *testing.T) {
 				t.Errorf("%s declares script %s but deploy/actions.d/%s is missing", p.Node, s.ID, s.ID)
 			}
 		}
+	}
+}
+
+func TestRunnerLogTailRefusesSymlinkedParent(t *testing.T) {
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	real := filepath.Join(dir, "real")
+	_ = os.MkdirAll(real, 0o755)
+	_ = os.WriteFile(filepath.Join(real, "a.log"), []byte("x\n"), 0o644)
+	_ = os.Symlink(real, filepath.Join(dir, "link"))
+	g := newRig(t, &ops.RunnerConfig{Node: "n", Logs: []ops.Log{{ID: "a", Path: filepath.Join(dir, "link", "a.log")}}})
+	if r := g.r.Handle(context.Background(), "log.tail log=a lines=20"); r.OK || !strings.Contains(r.Error, "symlink") {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestRunnerChangeWaitsForTheLock(t *testing.T) {
+	sc := loadShared(t)
+	g := newRig(t, &sc.Config)
+	g.r.Now = time.Now
+	g.r.LockWait = 3 * time.Second
+	g.on("systemctl restart x-ui.service", "")
+	release, _, err := g.r.takeCooldown("other", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { time.Sleep(500 * time.Millisecond); release() }()
+	if r := g.r.Handle(context.Background(), "unit.restart unit=x-ui.service"); !r.OK {
+		t.Fatalf("a change should wait for the running one: %+v", r)
+	}
+}
+
+func TestRunnerKeepsStderrApart(t *testing.T) {
+	sc := loadShared(t)
+	g := newRig(t, &sc.Config)
+	g.fake.Responses[filepath.Join(g.r.ScriptDir, "doctor")] = sysexec.FakeResponse{Stdout: `{"relay":"de-dus-wg-103"}`, Stderr: `{"relay":"evil"}`}
+	r := g.r.Handle(context.Background(), "script.read script=doctor")
+	if !r.OK || r.Output != `{"relay":"de-dus-wg-103"}` || !strings.Contains(r.Stderr, "evil") {
+		t.Fatalf("%+v", r)
 	}
 }

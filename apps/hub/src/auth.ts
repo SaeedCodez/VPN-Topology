@@ -108,6 +108,15 @@ export class Auth {
     return ok;
   }
 
+  /**
+   * Only the password+TOTP session (never the CLI bearer token, which agents
+   * hold): required to change who may approve ops plans and what they reach.
+   */
+  isAdminSession(req: any): boolean {
+    if (this.cfg.authDisabled) return false;
+    return this.validSession(parseCookies(req.headers?.cookie)[SESSION_COOKIE]);
+  }
+
   /** Session cookie or CLI bearer token. */
   isAuthorized(req: any): boolean {
     if (this.cfg.authDisabled) return true;

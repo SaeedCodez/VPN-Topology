@@ -279,17 +279,22 @@ func validCooldown(s string) error {
 	return nil
 }
 
-// ValidLogPath: absolute, clean, no "..", only safe characters.
+// ValidLogPath: absolute, clean, no "..", only safe characters, a *.log
+// file, and never in places that hold keys or credentials. Logs are read as
+// root, so this is an allowlist shape plus a denylist, not a free path.
 func ValidLogPath(p string) error {
 	if !strings.HasPrefix(p, "/") || path.Clean(p) != p || strings.Contains(p, "..") || len(p) > 256 {
 		return fmt.Errorf("path %q must be absolute and clean (no ..)", p)
+	}
+	if !strings.HasSuffix(p, ".log") {
+		return fmt.Errorf("path %q must be a .log file", p)
 	}
 	for _, c := range p {
 		if !(c == '/' || c == '.' || c == '_' || c == '-' || c == '@' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
 			return fmt.Errorf("path %q has a character that is not allowed", p)
 		}
 	}
-	for _, bad := range []string{"/etc/shadow", "/etc/gshadow", "/root/.ssh", "/etc/ssh", "/etc/sudoers", "/etc/vpnmap-ops", "/etc/vpnmap-agent", "/proc", "/sys", "/dev"} {
+	for _, bad := range []string{"/etc", "/root", "/home", "/proc", "/sys", "/dev", "/boot", "/var/lib/docker", "/run", "/tmp"} {
 		if p == bad || strings.HasPrefix(p, bad+"/") {
 			return fmt.Errorf("path %q is never readable through ops", p)
 		}

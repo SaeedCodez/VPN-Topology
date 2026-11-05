@@ -186,7 +186,6 @@ function play(id: string) {
 /** Telegram assistant settings (the OpenRouter key is write-only: sent, never read back). */
 /** Ops actions: closed catalog, owner-approved plans. The SSH private key is never returned. */
 export interface OpsGrant {
-  config: string
   install: string
   fingerprint: string
   check: string

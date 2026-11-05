@@ -1,6 +1,7 @@
-import { generateKeyPairSync } from 'crypto';
+import { createHash, generateKeyPairSync } from 'crypto';
 import { Bundle, OpsServerView } from '../contract';
 import { Box, open, seal } from '../secretbox';
+import { stable } from './plan';
 import { RE_FINGERPRINT } from './ssh';
 
 /**
@@ -37,6 +38,17 @@ export interface StoredOps {
   sshPublicKey?: string;
   sshPrivateKey?: Box;
   servers: Record<string, OpsServerState>;
+  /**
+   * Hash of the ops policy (bundle.ops) the owner accepted on the board.
+   * A topology apply (which a CLI token can do) that changes any ops: block
+   * blocks every change action until the owner accepts it again.
+   */
+  acceptedPolicy?: string;
+}
+
+/** Hash of the applied ops policy (all ops: blocks, resolved). */
+export function policyHash(bundle: Bundle): string {
+  return createHash('sha256').update(stable(bundle.ops ?? [])).digest('hex').slice(0, 16);
 }
 
 export const OPS_DEFAULTS: StoredOps = { enabled: false, actionModel: '', approverUserIds: [], servers: {} };
@@ -55,6 +67,8 @@ export interface OpsPatch {
   approverUserIds?: (string | number)[] | string;
   /** Regenerate the SSH keypair (every server must be granted again). */
   rotateKey?: boolean;
+  /** Accept the applied ops policy; must be its current hash. */
+  acceptPolicy?: string;
   servers?: OpsServerPatch[];
 }
 
@@ -127,6 +141,14 @@ export function applyOpsPatch(cur: StoredOps, p: OpsPatch, secret: string, bundl
       changes.push(`approvers → ${ids.length}`);
     }
   }
+  if (p.acceptPolicy !== undefined) {
+    const h = policyHash(bundle);
+    if (p.acceptPolicy !== h) throw new Error(`the ops policy is now ${h}; reload the panel and review it again`);
+    if (cur.acceptedPolicy !== h) {
+      next.acceptedPolicy = h;
+      changes.push(`ops policy ${h} accepted`);
+    }
+  }
   const runners = new Set((bundle.ops ?? []).filter((x) => x.runner).map((x) => x.node));
   for (const sp of p.servers ?? []) {
     if (!runners.has(sp.node)) throw new Error(`node ${sp.node} has no ops: {runner: true} block in the topology`);
@@ -182,34 +204,43 @@ export function serverView(s: StoredOps, bundle: Bundle, node: string, running =
 
 /**
  * Commands the owner runs on one server (CLAUDE.md rule 3: the hub never
- * installs anything). The config is JSON, which the runner's YAML parser
- * reads as is; it holds no secret.
+ * installs anything). One block: a private temp dir, the install script
+ * checked by sha256, the config (JSON, which the runner's YAML parser reads;
+ * it holds no secret) pinned by its hash, then the install itself.
  */
 export function grantCommands(opts: {
   hubUrl: string;
   node: string;
   config: object;
+  configHash: string;
+  installSha: string | null;
   binarySha: Record<string, string | null>;
   actions: { id: string; sha: string | null }[];
   publicKey: string;
-}): { config: string; install: string; fingerprint: string; check: string; uninstall: string; missing: string[] } {
+}): { install: string; fingerprint: string; check: string; uninstall: string; missing: string[] } {
   const hub = opts.hubUrl.replace(/\/+$/, '');
   const missing: string[] = [];
   const sha = opts.binarySha.amd64 ?? '';
   if (!sha) missing.push('vpnmap-ops-linux-amd64 is not built into this hub');
+  if (!opts.installSha) missing.push('ops-install.sh is not built into this hub');
   const acts = opts.actions.map((a) => {
     if (!a.sha) missing.push(`example action ${a.id} is not built into this hub; install your own script as /etc/vpnmap-ops/actions.d/${a.id}`);
     return a.sha ? `${a.id}:${a.sha}` : null;
   });
   const actionArg = acts.filter(Boolean).join(',');
+  const install = [
+    'D=$(mktemp -d) && cd "$D" &&',
+    `curl -fsSL ${hub}/agent/download/ops-install.sh -o ops-install.sh &&`,
+    `echo "${opts.installSha ?? '<missing>'}  ops-install.sh" | sha256sum -c - &&`,
+    "cat > ops.yaml <<'VPNMAP_OPS_EOF' &&",
+    JSON.stringify(opts.config, null, 2),
+    'VPNMAP_OPS_EOF',
+    `sudo bash ops-install.sh --hub ${hub} --node ${opts.node} \\`,
+    `  --sha256 ${sha || '<missing>'} --key '${opts.publicKey}' \\`,
+    `  --config-file "$D/ops.yaml" --config-hash ${opts.configHash}${actionArg ? ` \\\n  --actions ${actionArg}` : ''}`,
+  ].join('\n');
   return {
-    config: `cat > /tmp/vpnmap-ops.yaml <<'VPNMAP_OPS_EOF'\n${JSON.stringify(opts.config, null, 2)}\nVPNMAP_OPS_EOF`,
-    install: [
-      `curl -fsSL ${hub}/agent/ops-install.sh | sudo bash -s -- \\`,
-      `  --hub ${hub} --node ${opts.node} --sha256 ${sha || '<missing>'} \\`,
-      `  --key '${opts.publicKey}' \\`,
-      `  --config-file /tmp/vpnmap-ops.yaml${actionArg ? ` \\\n  --actions ${actionArg}` : ''}`,
-    ].join('\n') + (opts.binarySha.arm64 ? `\n# arm64 server: add --arch arm64 and use --sha256 ${opts.binarySha.arm64}` : ''),
+    install: install + (opts.binarySha.arm64 ? `\n# arm64 server: add --arch arm64 and use --sha256 ${opts.binarySha.arm64}` : ''),
     fingerprint: 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub',
     check: 'sudo tail -5 /var/log/vpnmap-ops.log',
     uninstall: `curl -fsSL ${hub}/agent/ops-uninstall.sh | sudo bash`,

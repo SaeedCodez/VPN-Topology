@@ -121,7 +121,7 @@ func TestOpsValidation(t *testing.T) {
 		"before missing":    {`read_before: { script: current, args: { cc: "{cc}" } }`, ``, "without read_before"},
 		"rollback literal":  {`relay: "{before.relay}"`, `relay: "x;y"`, "not accepted"},
 		"remnawave check":   {"- { id: rw, collector: remnawave-node, node: Relay-Node }", "", "remnawave-node check"},
-		"bad log path":      {"containers:\n        - { name: app, restart: true, cooldown: 5m }", "logs: [{ id: s, path: /etc/shadow }]", "never readable"},
+		"bad log path":      {"containers:\n        - { name: app, restart: true, cooldown: 5m }", "logs: [{ id: s, path: /etc/mullvad-ns/de.log }]", "never readable"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

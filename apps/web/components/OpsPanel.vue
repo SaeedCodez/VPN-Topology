@@ -122,6 +122,11 @@ const tone = (s: string) => (s === 'done' ? 'ok' : ['running', 'pending', 'appro
     <template v-if="view">
       <p v-if="view.demo" class="rounded-ctl border border-line bg-subtle px-3 py-2 text-[14px] text-fg-2">This hub runs in demo mode without a login, so every ops action is refused.</p>
 
+      <div v-if="!view.demo && !view.policyAccepted" class="rounded-ctl border border-warn/40 bg-warn/10 px-3 py-2 text-[14px]">
+        <p>The ops policy (the <code>ops:</code> blocks of the applied topology) is <code>{{ view.policyHash }}</code> and you have not accepted it. Until you do, every change action is refused; reads still work. Review it with <code>vpnmap ops show</code> first.</p>
+        <button class="btn mt-2 h-8 px-3 text-[13px]" :disabled="busy" @click="save({ acceptPolicy: view.policyHash }, 'Policy accepted')">Accept policy {{ view.policyHash }}</button>
+      </div>
+
       <label class="flex items-center justify-between gap-3">
         <span class="text-[15px] font-medium">Allow ops actions</span>
         <input v-model="form.enabled" type="checkbox" class="h-5 w-5 accent-[rgb(var(--fg))]" :disabled="view.demo" />
@@ -192,9 +197,8 @@ const tone = (s: string) => (s === 'done' ? 'ok' : ['running', 'pending', 'appro
           <div v-if="grant?.node === s.node" class="mt-3 space-y-2">
             <p class="text-[12.5px] text-fg-2">Run these yourself on {{ s.name }}, in order. The hub never installs anything.</p>
             <p v-for="m in grant.g.missing" :key="m" class="text-[12.5px] text-warn">{{ m }}</p>
-            <CopyCmd title="1. Save the runner config (it holds no secret)" :cmd="grant.g.config" />
-            <CopyCmd title="2. Install vpnmap-ops (sha256-checked)" :cmd="grant.g.install" />
-            <CopyCmd title="3. Host key fingerprint: paste it above" :cmd="grant.g.fingerprint" />
+            <CopyCmd title="1. Install vpnmap-ops (script, binary and config checked by hash)" :cmd="grant.g.install" />
+            <CopyCmd title="2. Host key fingerprint: paste it above" :cmd="grant.g.fingerprint" />
             <CopyCmd title="Audit log" :cmd="grant.g.check" />
             <CopyCmd title="Remove (revoke)" :cmd="grant.g.uninstall" />
           </div>

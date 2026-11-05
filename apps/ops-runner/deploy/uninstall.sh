@@ -10,8 +10,9 @@ rm -f /etc/sudoers.d/vpnmap-ops
 rm -f /home/vpnmap-ops/.ssh/authorized_keys
 if id vpnmap-ops >/dev/null 2>&1; then
 	pkill -u vpnmap-ops 2>/dev/null || true
-	userdel -r vpnmap-ops 2>/dev/null || userdel vpnmap-ops
+	userdel vpnmap-ops
 fi
+rm -rf /home/vpnmap-ops
 rm -f /usr/local/bin/vpnmap-ops
 rm -rf /etc/vpnmap-ops /var/lib/vpnmap-ops
 echo "vpnmap-ops removed (audit log kept in /var/log/vpnmap-ops.log)"

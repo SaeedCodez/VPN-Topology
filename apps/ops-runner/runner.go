@@ -30,6 +30,8 @@ type Response struct {
 	Req        string `json:"req,omitempty"`
 	ExitCode   int    `json:"exit_code"`
 	Output     string `json:"output,omitempty"`
+	// Stderr is kept apart so a read_before is parsed from stdout only.
+	Stderr     string `json:"stderr,omitempty"`
 	Truncated  bool   `json:"truncated,omitempty"`
 	Error      string `json:"error,omitempty"`
 	DurationMs int64  `json:"duration_ms"`
@@ -53,6 +55,8 @@ type Runner struct {
 	CheckTrust func(path string) error
 	// Peer is the SSH client address (from serve), for the audit log only.
 	Peer string
+	// LockWait is how long a change waits for another change to finish.
+	LockWait time.Duration
 }
 
 const tailWindow = 256 << 10
@@ -73,11 +77,12 @@ func (r *Runner) Handle(ctx context.Context, line string) Response {
 	}
 	if err != nil {
 		resp.OK = false
-		resp.Error = err.Error()
+		resp.Error = redact.String(strings.ToValidUTF8(err.Error(), "?"))
 	} else {
 		resp.OK = true
 	}
 	resp.Output = redact.String(strings.ToValidUTF8(resp.Output, "?"))
+	resp.Stderr = redact.String(strings.ToValidUTF8(resp.Stderr, "?"))
 	if len(resp.Output) > ops.MaxOutput {
 		resp.Output, resp.Truncated = resp.Output[:ops.MaxOutput], true
 	}
@@ -102,9 +107,7 @@ func (r *Runner) run(ctx context.Context, a *ops.Allowed, resp *Response) error 
 		resp.ExitCode = res.ExitCode
 		resp.Truncated = resp.Truncated || res.Truncated
 		resp.Output += string(res.Stdout)
-		if len(res.Stderr) > 0 {
-			resp.Output += "\n[stderr]\n" + string(res.Stderr)
-		}
+		resp.Stderr += string(res.Stderr)
 		return err
 	}
 	switch a.Type.Name {
@@ -261,8 +264,18 @@ func (r *Runner) wgSummary(ctx context.Context, w *ops.WG) (string, error) {
 }
 
 // tailFile returns the last n lines of a regular file without following a
-// symlink, reading at most the last 256 KiB.
+// symlink (in the file or any parent directory), reading at most the last
+// 256 KiB.
 func tailFile(path string, n int) (string, error) {
+	for d := filepath.Dir(path); d != "/" && d != "."; d = filepath.Dir(d) {
+		fi, err := os.Lstat(d)
+		if err != nil {
+			return "", err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+			return "", fmt.Errorf("%s is a symlink or not a directory", d)
+		}
+	}
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return "", err
@@ -322,8 +335,10 @@ var errBusy = errors.New("another change action is running on this server")
 
 // takeCooldown holds an exclusive lock on the state file for the whole
 // change (one change at a time per server) and refuses the action while its
-// cooldown runs. The time is recorded before the action runs, so a crash or
-// a timeout still counts.
+// cooldown runs. A change that finds the lock held waits for it (up to
+// LockWait), so a rollback sent right after a lost connection runs once the
+// first change has finished instead of failing. The time is recorded before
+// the action runs, so a crash or a timeout still counts.
 func (r *Runner) takeCooldown(key string, cd time.Duration) (release func(), left time.Duration, err error) {
 	if err := os.MkdirAll(r.StateDir, 0o700); err != nil {
 		return nil, 0, err
@@ -332,7 +347,18 @@ func (r *Runner) takeCooldown(key string, cd time.Duration) (release func(), lef
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	locked := false
+	for deadline := r.Now().Add(r.LockWait); ; {
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+			locked = true
+			break
+		}
+		if !r.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if !locked {
 		f.Close()
 		return nil, 0, errBusy
 	}

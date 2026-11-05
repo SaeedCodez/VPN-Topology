@@ -110,7 +110,8 @@ function parseArgs(text: string): any {
 
 /** Wraps server output for the model: data, never instructions. */
 export function untrusted(source: string, body: string): string {
-  const clean = body.replace(/<\/?untrusted-output[^>]*>/gi, '').slice(0, MAX_READ_OUTPUT);
+  // Angle brackets are escaped, so nothing inside can close or fake the wrapper.
+  const clean = body.slice(0, MAX_READ_OUTPUT).replace(/</g, '‹').replace(/>/g, '›');
   return [
     `<untrusted-output source="${source.replace(/[^a-z0-9._ =:@-]/gi, '')}">`,
     clean,
@@ -128,7 +129,7 @@ export async function runOpsTool(name: string, argsText: string, env: OpsToolEnv
       const t = typeof a.type === 'string' ? typeByName(a.type) : undefined;
       if (!t) return { output: `error: unknown type. Types: ${TYPES.filter((x) => x.kind === 'read').map((x) => x.name).join(', ')}` };
       const r = await env.read({ node: String(a.node ?? ''), type: a.type, args: a.args });
-      return { output: r.ok ? untrusted(`${a.node} ${a.type}`, r.output) : `error: ${r.error ?? 'failed'}${r.output ? '\n' + untrusted(`${a.node} ${a.type}`, r.output) : ''}` };
+      return { output: r.ok ? untrusted(`${a.node} ${a.type}`, r.output) : `error:\n${untrusted(`${a.node} ${a.type} (failed)`, `${r.error ?? 'failed'}${r.output ? '\n' + r.output : ''}`)}` };
     }
     if (name === 'ops_propose') {
       const { taskId } = await env.propose(a as OpsPlanInput);
