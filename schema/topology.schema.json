@@ -2462,6 +2462,242 @@
           "name": {
             "type": "string"
           },
+          "ops": {
+            "additionalProperties": false,
+            "description": "What ops actions may read or change on this node (docs/ops-actions.md).",
+            "properties": {
+              "containers": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "cooldown": {
+                      "description": "Duration such as 30s, 10m, 1h.",
+                      "pattern": "^[0-9]+(ms|s|m|h)$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Container or unit name.",
+                      "type": "string"
+                    },
+                    "never_restart": {
+                      "description": "Documented as never restartable; validate refuses restart: true next to it.",
+                      "type": "boolean"
+                    },
+                    "restart": {
+                      "description": "Allow the restart action (one owner approval).",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "logs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "description": "Lowercase id: letters, digits and dashes.",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Absolute log file path (stays on the server).",
+                      "pattern": "^/",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "remnawave": {
+                "items": {
+                  "enum": [
+                    "restart",
+                    "disable",
+                    "enable"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "runner": {
+                "description": "vpnmap-ops is installed on this server.",
+                "type": "boolean"
+              },
+              "scripts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "cooldown": {
+                      "description": "Duration such as 30s, 10m, 1h.",
+                      "pattern": "^[0-9]+(ms|s|m|h)$",
+                      "type": "string"
+                    },
+                    "disruptive": {
+                      "description": "Interrupts traffic through the node (default true for change scripts).",
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "description": "Lowercase id: letters, digits and dashes.",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "read",
+                        "change"
+                      ],
+                      "type": "string"
+                    },
+                    "params": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "doc": {
+                            "type": "string"
+                          },
+                          "enum": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "max": {
+                            "type": "integer"
+                          },
+                          "min": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                            "type": "string"
+                          },
+                          "pattern": {
+                            "description": "Anchored RE2; values must also be tokens ([A-Za-z0-9._@:-]).",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "read_before": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "description": "param → literal, {param} or {before.\u003cfield\u003e}",
+                          "type": "object"
+                        },
+                        "script": {
+                          "description": "Lowercase id: letters, digits and dashes.",
+                          "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "script"
+                      ],
+                      "type": "object"
+                    },
+                    "rollback": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "description": "param → literal, {param} or {before.\u003cfield\u003e}",
+                          "type": "object"
+                        },
+                        "script": {
+                          "description": "Lowercase id: letters, digits and dashes.",
+                          "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "script"
+                      ],
+                      "type": "object"
+                    },
+                    "timeout": {
+                      "description": "Duration such as 30s, 10m, 1h.",
+                      "pattern": "^[0-9]+(ms|s|m|h)$",
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "verify": {
+                      "description": "Extra map ids such as link.e8-{cc}.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "tcp_targets": {
+                "description": "Extra host:port targets for tcp.check (tcp-connect checks from this node are added automatically).",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "units": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "cooldown": {
+                      "description": "Duration such as 30s, 10m, 1h.",
+                      "pattern": "^[0-9]+(ms|s|m|h)$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Container or unit name.",
+                      "type": "string"
+                    },
+                    "never_restart": {
+                      "description": "Documented as never restartable; validate refuses restart: true next to it.",
+                      "type": "boolean"
+                    },
+                    "restart": {
+                      "description": "Allow the restart action (one owner approval).",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "verify": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
           "role": {
             "type": "string"
           },

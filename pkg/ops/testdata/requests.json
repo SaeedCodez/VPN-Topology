@@ -1,0 +1,81 @@
+{
+  "$comment": "Shared request cases: pkg/ops (Go, runner) and apps/hub (TypeScript) must give the same verdict for every line.",
+  "config": {
+    "node": "test-node",
+    "containers": [
+      { "name": "app", "restart": true, "cooldown": "10m" },
+      { "name": "db" }
+    ],
+    "units": [
+      { "name": "x-ui.service", "restart": true, "cooldown": "15m" },
+      { "name": "mullvad-ns@de.service" }
+    ],
+    "logs": [{ "id": "watchdog", "path": "/var/log/remnawave-watchdog.log" }],
+    "tcp_targets": ["31.56.89.125:9000"],
+    "ports": [2053, 9000],
+    "wg": [{ "iface": "wg-de", "netns": "mv-de" }, { "iface": "wg-game" }],
+    "scripts": [
+      { "id": "status", "kind": "read", "params": [{ "name": "cc", "pattern": "^([a-z]{2}|all)$" }] },
+      { "id": "select", "kind": "change", "cooldown": "15m", "params": [
+        { "name": "cc", "enum": ["de", "us"] },
+        { "name": "relay", "pattern": "^[a-z]{2}-[a-z]{3}-wg-[0-9]{3}$" }
+      ] },
+      { "id": "count", "kind": "read", "params": [{ "name": "n", "min": 1, "max": 5 }] },
+      { "id": "doctor", "kind": "read" }
+    ]
+  },
+  "cases": [
+    { "name": "ping", "line": "ping", "ok": true },
+    { "name": "list containers", "line": "container.list", "ok": true },
+    { "name": "stats declared container", "line": "container.stats container=db", "ok": true },
+    { "name": "logs with fixed values", "line": "container.logs container=app since=15m tail=100", "ok": true },
+    { "name": "logs since not in enum", "line": "container.logs container=app since=2h tail=100", "ok": false },
+    { "name": "logs missing tail", "line": "container.logs container=app since=5m", "ok": false },
+    { "name": "restart restartable container", "line": "container.restart container=app", "ok": true, "cooldown_s": 600 },
+    { "name": "restart read-only container", "line": "container.restart container=db", "ok": false },
+    { "name": "restart undeclared container", "line": "container.restart container=remnawave-db", "ok": false },
+    { "name": "unit status", "line": "unit.status unit=mullvad-ns@de.service", "ok": true },
+    { "name": "unit restart allowed", "line": "unit.restart unit=x-ui.service", "ok": true, "cooldown_s": 900 },
+    { "name": "unit restart not allowed", "line": "unit.restart unit=mullvad-ns@de.service", "ok": false },
+    { "name": "log by id", "line": "log.tail log=watchdog lines=50", "ok": true },
+    { "name": "log by path", "line": "log.tail log=/etc/shadow lines=50", "ok": false },
+    { "name": "tcp target declared", "line": "tcp.check target=31.56.89.125:9000", "ok": true },
+    { "name": "tcp target undeclared", "line": "tcp.check target=8.8.8.8:53", "ok": false },
+    { "name": "conns port", "line": "conns.count port=2053", "ok": true },
+    { "name": "conns port padded", "line": "conns.count port=02053", "ok": false },
+    { "name": "wg iface", "line": "wg.handshakes iface=wg-de", "ok": true },
+    { "name": "read script pattern", "line": "script.read script=status cc=all", "ok": true },
+    { "name": "read script pattern miss", "line": "script.read script=status cc=deu", "ok": false },
+    { "name": "read script no params", "line": "script.read script=doctor", "ok": true },
+    { "name": "read script int range", "line": "script.read script=count n=3", "ok": true },
+    { "name": "read script int out of range", "line": "script.read script=count n=9", "ok": false },
+    { "name": "read script int leading zero", "line": "script.read script=count n=03", "ok": false },
+    { "name": "change script", "line": "script.change script=select cc=de relay=de-dus-wg-103", "ok": true, "cooldown_s": 900 },
+    { "name": "change script via read type", "line": "script.read script=select cc=de relay=de-dus-wg-103", "ok": false },
+    { "name": "change script enum miss", "line": "script.change script=select cc=fr relay=fr-par-wg-301", "ok": false },
+    { "name": "extra argument", "line": "container.stats container=db extra=1", "ok": false },
+    { "name": "request id", "line": "disk.usage req=0123abcd", "ok": true },
+    { "name": "bad request id", "line": "disk.usage req=XYZ", "ok": false },
+    { "name": "unknown type", "line": "shell cmd=id", "ok": false },
+    { "name": "remnawave type on server", "line": "rw.nodes", "ok": false },
+    { "name": "semicolon", "line": "container.stats container=db;id", "ok": false },
+    { "name": "pipe", "line": "container.stats container=db|id", "ok": false },
+    { "name": "command substitution", "line": "container.stats container=$(id)", "ok": false },
+    { "name": "backticks", "line": "container.stats container=`id`", "ok": false },
+    { "name": "newline", "line": "container.stats container=db\nid", "ok": false },
+    { "name": "tab", "line": "container.stats\tcontainer=db", "ok": false },
+    { "name": "double space", "line": "container.stats  container=db", "ok": false },
+    { "name": "trailing space", "line": "container.stats container=db ", "ok": false },
+    { "name": "dot dot", "line": "script.read script=status cc=..", "ok": false },
+    { "name": "path traversal", "line": "log.tail log=../../etc/shadow lines=20", "ok": false },
+    { "name": "option injection", "line": "container.stats container=-v", "ok": false },
+    { "name": "unicode lookalike", "line": "container.stats container=dЬ", "ok": false },
+    { "name": "fullwidth equals", "line": "container.stats container＝db", "ok": false },
+    { "name": "quote", "line": "container.stats container='db'", "ok": false },
+    { "name": "overlong value", "line": "script.read script=status cc=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "ok": false },
+    { "name": "duplicate key", "line": "container.stats container=db container=app", "ok": false },
+    { "name": "uppercase key", "line": "container.stats Container=db", "ok": false },
+    { "name": "empty value", "line": "container.stats container=", "ok": false },
+    { "name": "empty", "line": "", "ok": false }
+  ]
+}

@@ -41,6 +41,15 @@ nodes:
     metrics:
       - { id: conns, label: Conns, collector: ss-conns, host: relay-1, port: 2053 }
     card: [conns, cpu, net]
+    ops:
+      runner: true
+      units:
+        # Restarting realm drops every forward, i.e. every main-route user.
+        - { name: realm.service, never_restart: true }
+      logs:
+        - { id: realm, path: /var/log/realm/realm.log }
+      scripts:
+        - { id: relay-status, kind: read, title: relay-ctl status }
     runbook:
       - { title: relay-ctl status and realm log, cmd: "ssh root@31.56.89.121 'relay-ctl status; tail -5 /var/log/realm/realm.log'" }
       - { title: Established user connections on 2053, cmd: "ssh root@31.56.89.121 'ss -Htn state established sport = :2053 | wc -l'" }
@@ -64,6 +73,8 @@ nodes:
       - { id: online, label: Online, collector: remnawave-online, node: Local-Node }
       - { id: conns, label: Conns, collector: ss-conns, host: panel, port: 2053 }
     card: [online, conns]
+    ops:
+      remnawave: [restart, disable, enable]
     runbook:
       - { title: Node container status, cmd: "ssh root@81.12.50.23 'docker ps --filter name=remnanode --format \"{{.Names}} {{.Status}}\"'" }
       - { title: Remnawave nodes (API), cmd: "curl -s -H \"Authorization: Bearer $TOKEN\" https://pl.api.mohiraweb.ir/api/nodes | jq '.response[] | {name, isConnected, isNodeOnline, usersOnline}'" }
@@ -88,6 +99,29 @@ nodes:
       - { id: conns, label: Conns, collector: ss-conns, host: xbridger-node-3, port: 9000 }
     listens: [tcp/80, tcp/8000-8100, tcp/9000-9100]   # node API; ports published for XBridger connections (only 9000 used)
     card: [connection, conns, cpu]
+    ops:
+      runner: true
+      containers:
+        # A container restart drops :9000 for ~29 s (the whole main route);
+        # restart the single connection instead.
+        - { name: backend-app-1, never_restart: true }
+        - { name: backend-postgres-1, never_restart: true }
+      scripts:
+        - { id: xbridger-doctor, kind: read, title: xbridger doctor }
+        - id: xbridger-conn-show
+          kind: read
+          title: xbridger conn show (never --reveal)
+          params: [{ name: conn, pattern: "^[a-z0-9]{6,32}$" }]
+        - id: xbridger-conn-start
+          kind: change
+          title: Start an XBridger connection (2026-10-13 fix)
+          params: [{ name: conn, pattern: "^[a-z0-9]{6,32}$" }]
+          disruptive: false
+          cooldown: 5m
+        - id: xbridger-conn-restart
+          kind: change
+          title: Restart an XBridger connection
+          params: [{ name: conn, pattern: "^[a-z0-9]{6,32}$" }]
     runbook:
       - { title: XBridger doctor, cmd: "ssh root@31.56.89.125 'docker exec backend-app-1 xbridger doctor'" }
       - { title: Is :9000 open from the panel, cmd: "ssh root@81.12.50.23 'timeout 5 bash -c \"echo > /dev/tcp/31.56.89.125/9000\" && echo OPEN || echo DOWN'" }
@@ -121,6 +155,10 @@ nodes:
       - { id: x-ui, collector: systemd-unit, host: france-exit, unit: x-ui.service }
     listens: [tcp/2096, tcp/57111]   # 3x-ui subscription service and web panel (01 port matrix)
     card: [cpu, disk, net]
+    ops:
+      runner: true
+      units:
+        - { name: x-ui.service, restart: true, cooldown: 15m }
     runbook:
       - { title: x-ui status and disk, cmd: "ssh root@188.130.207.152 'systemctl is-active x-ui; df -h /'" }
 

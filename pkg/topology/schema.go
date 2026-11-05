@@ -97,6 +97,7 @@ var ComponentSchema = &S{Type: "object", Desc: "One VPN feature: its nodes, link
 		{Name: "runbook", S: sRunbook},
 		{Name: "tags", S: &S{Type: "array", Items: &S{Type: "string"}}},
 		{Name: "listens", S: &S{Type: "array", Desc: "Expected listening ports beyond those implied by checks and links, e.g. tcp/80 or tcp/8000-8100 (used by drift).", Items: &S{Type: "string", Pattern: `^(tcp|udp)/[0-9]{1,5}(-[0-9]{1,5})?$`}}},
+		{Name: "ops", S: sOps},
 	}}}},
 	{Name: "links", S: &S{Type: "array", Items: &S{Type: "object", Fields: []F{
 		{Name: "id", S: sID, Required: true},

@@ -297,6 +297,8 @@ func resolve(b *Bundle, ds *Diagnostics) {
 	sort.SliceStable(b.Links, func(i, j int) bool { return b.Links[i].ID < b.Links[j].ID })
 	sort.SliceStable(b.Routes, func(i, j int) bool { return b.Routes[i].ID < b.Routes[j].ID })
 	sort.SliceStable(b.Alerts, func(i, j int) bool { return b.Alerts[i].ID < b.Alerts[j].ID })
+
+	resolveOps(b, ds)
 }
 
 type checkCtx struct {

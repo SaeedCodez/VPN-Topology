@@ -5,6 +5,8 @@
 // schema/topology.schema.json is generated from schema.go.
 package topology
 
+import "vpnmap/pkg/ops"
+
 // SchemaVersion is the value of `schema:` in map.yaml.
 const SchemaVersion = "vpnmap/v1"
 
@@ -103,7 +105,10 @@ type Node struct {
 	// Listens declares ports the server is expected to listen on beyond those
 	// implied by checks and links ("tcp/80", "tcp/8000-8100"), so drift only
 	// shows what is really unexpected.
-	Listens []string  `yaml:"listens,omitempty" json:"listens,omitempty"`
+	Listens []string `yaml:"listens,omitempty" json:"listens,omitempty"`
+	// Ops declares what the ops actions may read or change on this node
+	// (docs/ops-actions.md). Resolved into Bundle.Ops.
+	Ops     *NodeOps  `yaml:"ops,omitempty" json:"ops,omitempty"`
 	Defined DefinedIn `yaml:"-" json:"defined_in"`
 }
 
@@ -209,7 +214,9 @@ type Bundle struct {
 	Alerts     []Alert         `json:"alerts"`
 	Layout     map[string]Pos  `json:"layout"`
 	Catalog    []CollectorInfo `json:"catalog"`
-	Source     BundleSource    `json:"source"`
+	// Ops is the resolved ops policy per node that has an `ops:` block.
+	Ops    []ops.NodePolicy `json:"ops"`
+	Source BundleSource     `json:"source"`
 	// Hash is a content hash of the topology (excluding source and layout),
 	// so plan/apply can tell whether anything changed.
 	Hash string `json:"hash"`
