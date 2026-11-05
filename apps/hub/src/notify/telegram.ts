@@ -14,13 +14,29 @@ export interface TelegramConfig {
 export interface SendResult {
   ok: boolean;
   error?: string;
+  /** Telegram's message_id of the sent message. */
+  messageId?: number;
+}
+
+export interface CallResult {
+  ok: boolean;
+  status: number;
+  result?: any;
+  error?: string;
+}
+
+export interface SendOptions {
+  replyTo?: number;
+  /** Plain text (no HTML parsing). */
+  plain?: boolean;
+  onSent?: (messageId: number) => void;
 }
 
 const MAX_ATTEMPTS = 6;
 const MAX_QUEUE = 200;
 
 export class TelegramSender {
-  private queue: string[] = [];
+  private queue: { text: string; opts: SendOptions }[] = [];
   private busy = false;
   lastError: { at: string; error: string } | null = null;
   sent = 0;
@@ -31,16 +47,46 @@ export class TelegramSender {
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
   ) {}
 
+  get chatId(): string {
+    return this.cfg.chatId;
+  }
+
+  /** The bot's own user id (the number before ':' in the token). */
+  get botId(): string {
+    return this.cfg.token.split(':')[0];
+  }
+
   /** Queue a message; returns at once. */
-  enqueue(text: string) {
+  enqueue(text: string, opts: SendOptions = {}) {
     if (this.queue.length >= MAX_QUEUE) this.queue.shift(); // keep the newest during a long Telegram outage
-    this.queue.push(text);
+    this.queue.push({ text, opts });
     if (!this.busy) void this.drain();
   }
 
-  /** Send now and report the result (used by the "send a test message" endpoint). */
-  async sendNow(text: string): Promise<SendResult> {
-    return this.post(text);
+  /** Send now and report the result (test message, assistant answers). */
+  async sendNow(text: string, opts: SendOptions = {}): Promise<SendResult> {
+    const r = await this.post(text, opts);
+    if (r.ok && r.messageId !== undefined) opts.onSent?.(r.messageId);
+    return r;
+  }
+
+  /** Any Bot API method (getUpdates, sendChatAction, ...). Never throws; the token is never in the error. */
+  async call(method: string, body: Record<string, unknown>, timeoutMs = 15_000): Promise<CallResult> {
+    const url = `${this.cfg.apiRoot.replace(/\/+$/, '')}/bot${this.cfg.token}/${method}`;
+    try {
+      const res = await this.fetchFn(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const json: any = await res.json().catch(() => ({}));
+      if (res.ok && json.ok !== false) return { ok: true, status: res.status, result: json.result };
+      const retry = json?.parameters?.retry_after ? ` (retry after ${json.parameters.retry_after})` : '';
+      return { ok: false, status: res.status, error: this.redact(`${res.status} ${json?.description ?? res.statusText}${retry}`) };
+    } catch (e: any) {
+      return { ok: false, status: 0, error: this.redact(`network: ${e?.cause?.code ?? e?.name ?? 'error'} ${e?.cause?.message ?? e?.message ?? ''}`.trim()) };
+    }
   }
 
   get pending(): number {
@@ -51,11 +97,14 @@ export class TelegramSender {
     this.busy = true;
     try {
       while (this.queue.length) {
-        const text = this.queue[0];
+        const { text, opts } = this.queue[0];
         let delay = 2_000;
         for (let attempt = 1; ; attempt++) {
-          const r = await this.post(text);
-          if (r.ok) break;
+          const r = await this.post(text, opts);
+          if (r.ok) {
+            if (r.messageId !== undefined) opts.onSent?.(r.messageId);
+            break;
+          }
           const retryAfter = /retry after (\d+)/i.exec(r.error ?? '');
           const permanent = /^(400|401|403|404)\b/.test(r.error ?? '');
           if (permanent || attempt >= MAX_ATTEMPTS) {
@@ -72,30 +121,28 @@ export class TelegramSender {
     }
   }
 
-  private async post(text: string): Promise<SendResult> {
-    const url = `${this.cfg.apiRoot.replace(/\/+$/, '')}/bot${this.cfg.token}/sendMessage`;
-    try {
-      const res = await this.fetchFn(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: this.cfg.chatId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true } }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      const body: any = await res.json().catch(() => ({}));
-      if (res.ok && body.ok !== false) {
-        this.sent++;
-        return { ok: true };
-      }
-      const retry = body?.parameters?.retry_after ? ` (retry after ${body.parameters.retry_after})` : '';
-      return this.fail(`${res.status} ${body?.description ?? res.statusText}${retry}`);
-    } catch (e: any) {
-      return this.fail(`network: ${e?.cause?.code ?? e?.name ?? 'error'} ${e?.cause?.message ?? e?.message ?? ''}`.trim());
+  private async post(text: string, opts: SendOptions = {}): Promise<SendResult> {
+    const r = await this.call('sendMessage', {
+      chat_id: this.cfg.chatId,
+      text,
+      ...(opts.plain ? {} : { parse_mode: 'HTML' }),
+      link_preview_options: { is_disabled: true },
+      ...(opts.replyTo ? { reply_parameters: { message_id: opts.replyTo, allow_sending_without_reply: true } } : {}),
+    });
+    if (r.ok) {
+      this.sent++;
+      return { ok: true, messageId: typeof r.result?.message_id === 'number' ? r.result.message_id : undefined };
     }
+    return this.fail(r.error ?? 'error');
+  }
+
+  private redact(s: string): string {
+    // Belt and braces: never let the token reach a log line or an API answer.
+    return s.split(this.cfg.token).join('<token>');
   }
 
   private fail(error: string): SendResult {
-    // Belt and braces: never let the token reach a log line or an API answer.
-    const clean = error.split(this.cfg.token).join('<token>');
+    const clean = this.redact(error);
     this.lastError = { at: new Date().toISOString(), error: clean };
     return { ok: false, error: clean };
   }

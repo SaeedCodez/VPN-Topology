@@ -2,6 +2,18 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Bundle, EventKind, HubEvent, TopologyVersion } from '../contract';
 import * as s from './schema';
 
+/** A message the hub sent to Telegram (alert, recovery, assistant answer). */
+export interface TelegramMessage {
+  chatId: string;
+  messageId: number;
+  kind: 'alert' | 'resolved' | 'answer' | 'test' | string;
+  alertKey?: string;
+  at: number;
+  text: string;
+  /** For answers: the conversation so far, so a reply continues it. */
+  thread?: { role: 'user' | 'assistant'; content: string }[];
+}
+
 /**
  * Database access. DATABASE_URL → Postgres (node-postgres); without it (demo,
  * tests) → PGlite, an embedded Postgres in WASM, so the same SQL runs everywhere.
@@ -173,6 +185,38 @@ export class Db {
 
   async activeSilences(now: Date) {
     return this.db.select().from(s.silences).where(gte(s.silences.until, now));
+  }
+
+  // ---------------------------------------------------------------- settings, telegram messages
+
+  async getSetting<T>(key: string): Promise<T | null> {
+    const rows = await this.db.select().from(s.settings).where(eq(s.settings.key, key)).limit(1);
+    return rows.length ? (rows[0].value as T) : null;
+  }
+
+  async putSetting(key: string, value: unknown) {
+    await this.db
+      .insert(s.settings)
+      .values({ key, value })
+      .onConflictDoUpdate({ target: s.settings.key, set: { value, updatedAt: new Date() } });
+  }
+
+  async addTelegramMessage(m: TelegramMessage) {
+    await this.db
+      .insert(s.telegramMessages)
+      .values({ chatId: m.chatId, messageId: m.messageId, kind: m.kind, alertKey: m.alertKey ?? null, at: new Date(m.at), text: m.text.slice(0, 4000), thread: m.thread ?? null })
+      .onConflictDoNothing();
+  }
+
+  async telegramMessage(chatId: string, messageId: number): Promise<TelegramMessage | null> {
+    const rows = await this.db
+      .select()
+      .from(s.telegramMessages)
+      .where(and(eq(s.telegramMessages.chatId, chatId), eq(s.telegramMessages.messageId, messageId)))
+      .limit(1);
+    if (!rows.length) return null;
+    const r = rows[0];
+    return { chatId: r.chatId, messageId: Number(r.messageId), kind: r.kind, alertKey: r.alertKey ?? undefined, at: new Date(r.at).getTime(), text: r.text, thread: (r.thread as any) ?? undefined };
   }
 }
 

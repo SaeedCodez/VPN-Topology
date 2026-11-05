@@ -21,6 +21,7 @@ export interface OutMessage {
   key: string; // "<alert id>|<instance>"
   kind: 'fired' | 'resolved';
   text: string; // Telegram HTML
+  at: number; // when it fired / recovered
 }
 
 interface Announced {
@@ -67,7 +68,7 @@ export class NotifyPlanner {
         }
         if (ctx.silencedUntil(t.alert.id, t.instance.key) > t.at) continue;
         this.announced.set(key, { since: t.at, pendingResolveAt: null, text: fa, severity: t.alert.severity });
-        out.push({ key, kind: 'fired', text: firedText(t, fa, ctx) });
+        out.push({ key, kind: 'fired', text: firedText(t, fa, ctx), at: t.at });
       } else {
         const prev = this.announced.get(key);
         if (!prev) continue;
@@ -87,6 +88,7 @@ export class NotifyPlanner {
       out.push({
         key,
         kind: 'resolved',
+        at: resolvedAt,
         text: [`✅ <b>برطرف شد</b>`, esc(a.text), `مدت: ${duration(resolvedAt - a.since)} · ${tehranTime(resolvedAt)}`, link(boardUrl)].filter(Boolean).join('\n'),
       });
     }

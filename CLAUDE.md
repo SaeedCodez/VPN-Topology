@@ -12,7 +12,9 @@ shows the same facts on the board (web) and in the `vpnmap` CLI.
    Remnawave, `relay-ctl` and XBridger, and need the owner's approval.
 2. **Never print, commit or paste secrets.** No tokens, passwords, keys,
    `privateKey`, `shortIds` or `.env` values in files, commits, PRs or chat.
-   Secrets live only in the hub's env vars (Coolify) or on the servers.
+   Secrets live only in the hub's env vars (Coolify) or on the servers. One
+   exception: the assistant's OpenRouter key, entered on the board, stored
+   encrypted in the hub DB and never returned by any API.
    `vpnmap validate` rejects lines that look like secrets.
 3. **Do not install anything on a production server yourself.** Print the exact
    commands (`vpnmap agent install-cmd <node>`, `vpnmap plan`) for the owner.
@@ -41,7 +43,7 @@ pkg/agentcfg, pkg/protocol    agent config file and agent → hub push payload
 pkg/redact                    secret redaction shared by CLI and agent
 apps/cli                      `vpnmap` (Go)
 apps/agent                    `vpnmap-agent` (Go), deploy/ has units, install/uninstall, checks.d examples
-apps/hub                      NestJS hub: ingest, resolvers, evaluation, root cause, alerts, API, WebSocket, demo simulator
+apps/hub                      NestJS hub: ingest, resolvers, evaluation, root cause, alerts, Telegram + assistant, API, WebSocket, demo simulator
 apps/web                      Nuxt 3 board (Vue Flow, Tailwind, ECharts); types come from apps/hub/src/contract.ts
 .claude/skills                add-component, diagnose-outage
 ```

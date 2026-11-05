@@ -363,3 +363,42 @@ export interface DemoScenario {
   description: string;
   durationSec: number;
 }
+
+// ---------------------------------------------------------------- Telegram assistant
+
+export interface AssistantSettingsView {
+  enabled: boolean;
+  model: string;
+  allowedUserIds: string[];
+  dailyLimit: number;
+  hasKey: boolean;
+  /** "sk-or-…ab12"; the key itself is never returned. */
+  keyHint: string | null;
+  /** A key is stored but cannot be decrypted (SESSION_SECRET changed): enter it again. */
+  keyUnreadable: boolean;
+  telegram: { enabled: boolean; reason?: string };
+  polling: { running: boolean; lastPollAt: string | null; error: string | null };
+  usage: { day: string; questions: number; promptTokens: number; completionTokens: number; costUsd: number };
+  lastError: { at: string; error: string } | null;
+  /** Last message for the bot from a Telegram user who is not allowed (to find your own id). */
+  lastIgnored: { at: string; fromId: string; fromName: string } | null;
+}
+
+export interface AssistantModel {
+  id: string;
+  name: string;
+  contextLength: number | null;
+  /** USD per million tokens. */
+  promptPrice: number | null;
+  completionPrice: number | null;
+  tools: boolean;
+}
+
+export interface AssistantTestResult {
+  ok: boolean;
+  model: string;
+  ms: number;
+  reply?: string;
+  costUsd?: number | null;
+  error?: string;
+}

@@ -5,43 +5,21 @@ import { AgentInfo, Bundle, Series } from '../contract';
 import { Auth, Public, SESSION_COOKIE } from '../auth';
 import { HubService } from '../hub.service';
 import { Push } from '../engine/protocol';
-import { describe, diagnose, NotFound, path as pathView, why } from '../engine/views';
+import { parseAt, parseDuration, Queries } from '../queries';
+import { AssistantPatch } from '../assistant/settings';
 import { linkName } from '../engine/evaluate';
 
-/** Parse `at`: RFC 3339 ("2026-10-22T02:03Z"), relative ("-2h", "90m"), or unix ms. */
-export function parseAt(v: string | undefined): number | null {
-  if (!v) return null;
-  const rel = /^-?(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(v.trim());
-  if (rel) return Date.now() - parseFloat(rel[1]) * ({ s: 1e3, m: 6e4, h: 3.6e6, d: 8.64e7 } as any)[rel[2]];
-  if (/^\d{12,}$/.test(v)) return Number(v);
-  const t = Date.parse(v);
-  if (Number.isNaN(t)) throw new BadRequestException(`invalid time "${v}" (use RFC 3339 like 2026-10-22T02:03Z, or -2h)`);
-  if (t > Date.now() + 60_000) throw new BadRequestException('time is in the future');
-  return t;
-}
-
-function parseDuration(v: string | undefined, def: number): number {
-  if (!v) return def;
-  const m = /^(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(v.trim().replace(/^-/, ''));
-  if (!m) throw new BadRequestException(`invalid duration "${v}" (use e.g. 30m, 2h, 1d)`);
-  return parseFloat(m[1]) * ({ s: 1e3, m: 6e4, h: 3.6e6, d: 8.64e7 } as any)[m[2]];
-}
-
-function wrap<T>(fn: () => T): T {
-  try {
-    return fn();
-  } catch (e) {
-    if (e instanceof NotFound) throw new NotFoundException(e.message);
-    throw e;
-  }
-}
+export { parseAt };
 
 @Controller('api')
 export class ApiController {
+  private readonly q: Queries;
   constructor(
     private hub: HubService,
     private auth: Auth,
-  ) {}
+  ) {
+    this.q = new Queries(hub);
+  }
 
   // ------------------------------------------------------------- health & auth
 
@@ -85,18 +63,8 @@ export class ApiController {
   }
 
   @Get('status')
-  async status(@Query('at') at?: string) {
-    const { snap, bundle } = await this.hub.snapshotAt(parseAt(at));
-    return {
-      at: snap.at,
-      live: snap.live,
-      mode: snap.mode,
-      topology: snap.topology,
-      overall: snap.overall,
-      routes: bundle.routes.map((r) => ({ ...snap.routes[r.id], title: r.title, impact: r.impact, squads: r.squads ?? [] })),
-      alerts: snap.alerts,
-      drift: snap.drift,
-    };
+  status(@Query('at') at?: string) {
+    return this.q.status(parseAt(at));
   }
 
   @Get('topology')
@@ -171,94 +139,34 @@ export class ApiController {
   }
 
   @Get('describe/:id')
-  async describe(@Param('id') id: string, @Query('at') at?: string) {
-    const t = parseAt(at);
-    const { snap, bundle } = await this.hub.snapshotAt(t);
-    const ent = wrap(() => describe(bundle, snap, id, []));
-    const kinds = ent.kind === 'node' ? ['node'] : ent.kind === 'link' ? ['link'] : ['route'];
-    const evs = await this.hub.db.events({ entity: { kind: kinds[0], id: ent.id }, until: t ? new Date(t) : undefined, limit: 20 });
-    ent.events = evs.filter((e) => e.kind !== 'state' || e.entityKind !== 'check');
-    return ent;
+  describe(@Param('id') id: string, @Query('at') at?: string) {
+    return this.q.describe(id, parseAt(at));
   }
 
   @Get('why/:id')
-  async why(@Param('id') id: string, @Query('at') at?: string) {
-    const { snap, bundle } = await this.hub.snapshotAt(parseAt(at));
-    return { id, at: snap.at, reasons: wrap(() => why(bundle, snap, id)) };
+  why(@Param('id') id: string, @Query('at') at?: string) {
+    return this.q.why(id, parseAt(at));
   }
 
   @Get('path')
-  async path(@Query('from') from: string, @Query('to') to: string, @Query('route') route?: string, @Query('at') at?: string) {
-    if (!from || !to) throw new BadRequestException('from and to are required');
-    const { snap, bundle } = await this.hub.snapshotAt(parseAt(at));
-    return wrap(() => pathView(bundle, snap, from, to, route));
+  path(@Query('from') from: string, @Query('to') to: string, @Query('route') route?: string, @Query('at') at?: string) {
+    return this.q.path(from, to, route, parseAt(at));
   }
 
   @Get('diagnose')
-  async diagnose(@Query('at') at?: string) {
-    const t = parseAt(at);
-    const { snap, bundle } = await this.hub.snapshotAt(t);
-    const end = t ?? Date.now();
-    const recent = (await this.hub.db.events({ since: new Date(end - 2 * 3_600_000), until: new Date(end), limit: 200 })).filter((e) => !(e.kind === 'state' && e.entityKind === 'check')).slice(0, 25);
-    return diagnose(bundle, snap, recent);
+  diagnose(@Query('at') at?: string) {
+    return this.q.diagnose(parseAt(at));
   }
 
   @Get('events')
-  async events(@Query('since') since?: string, @Query('until') until?: string, @Query('entity') entity?: string, @Query('kind') kind?: string, @Query('limit') limit?: string, @Query('checks') checks?: string) {
-    const end = parseAt(until) ?? Date.now();
-    const start = since ? end - parseDuration(since, 7_200_000) : end - 7_200_000;
-    let ent: { kind: string; id: string } | undefined;
-    if (entity) {
-      const n = this.hub.bundle.nodes.find((x) => x.id === entity);
-      const l = this.hub.bundle.links.find((x) => x.id === entity);
-      const r = this.hub.bundle.routes.find((x) => x.id === entity);
-      ent = n ? { kind: 'node', id: entity } : l ? { kind: 'link', id: entity } : r ? { kind: 'route', id: entity } : undefined;
-      if (!ent) throw new NotFoundException(`no node, link or route "${entity}"`);
-    }
-    const list = await this.hub.db.events({ since: new Date(start), until: new Date(end), entity: ent, kinds: kind ? kind.split(',') : undefined, limit: Number(limit ?? 500) });
-    return checks === 'true' ? list : list.filter((e) => !(e.kind === 'state' && e.entityKind === 'check'));
+  events(@Query('since') since?: string, @Query('until') until?: string, @Query('entity') entity?: string, @Query('kind') kind?: string, @Query('limit') limit?: string, @Query('checks') checks?: string) {
+    return this.q.events({ sinceMs: parseDuration(since, 7_200_000), until: parseAt(until), entity, kinds: kind ? kind.split(',') : undefined, limit: Number(limit ?? 500), checks: checks === 'true' });
   }
 
   /** Series for one entity (default keys) or explicit keys=a,b. */
   @Get('metrics')
-  async metrics(@Query('entity') entity?: string, @Query('keys') keys?: string, @Query('since') since?: string, @Query('until') until?: string, @Query('step') step?: string): Promise<Series[]> {
-    const end = parseAt(until) ?? Date.now();
-    const span = parseDuration(since, 3_600_000);
-    const stepMs = step ? parseDuration(step, 60_000) : Math.max(10_000, Math.round(span / 240 / 10_000) * 10_000);
-    const defs = keys ? keys.split(',').map((k) => ({ key: k, label: k, unit: '' })) : entity ? this.defaultSeries(entity) : [];
-    if (!defs.length) throw new BadRequestException('give entity=<id> or keys=<series keys>');
-    const m = await this.hub.tsdb.range(defs.map((d) => d.key), end - span, end, stepMs);
-    return defs.map((d) => ({ ...d, points: m.get(d.key) ?? [] }));
-  }
-
-  private defaultSeries(id: string): { key: string; label: string; unit: string }[] {
-    const b = this.hub.bundle;
-    const n = b.nodes.find((x) => x.id === id);
-    if (n) {
-      const out: { key: string; label: string; unit: string }[] = [];
-      if (n.agent) out.push({ key: `n:${id}:cpu`, label: 'CPU', unit: '%' }, { key: `n:${id}:mem`, label: 'Memory', unit: '%' }, { key: `n:${id}:net`, label: 'Network', unit: 'bps' });
-      for (const m of n.metrics ?? []) out.push({ key: `m:${m.key}`, label: m.label ?? m.id, unit: m.collector === 'remnawave-online' ? 'users' : m.collector === 'ss-conns' ? 'conns' : '' });
-      for (const c of n.checks ?? []) if (['http-probe', 'tcp-connect', 'xbridger-connection'].includes(c.collector)) out.push({ key: `c:${c.key}:v`, label: c.title ?? c.id, unit: 'ms' });
-      return out;
-    }
-    const l = b.links.find((x) => x.id === id || x.label?.toLowerCase() === id.toLowerCase());
-    if (l) {
-      const out = [
-        { key: `l:${l.id}:up`, label: 'Up', unit: 'bps' },
-        { key: `l:${l.id}:down`, label: 'Down', unit: 'bps' },
-      ];
-      if (l.conns) out.push({ key: `l:${l.id}:conns`, label: 'Connections', unit: 'conns' });
-      for (const c of l.health ?? []) if (['tcp-connect', 'http-probe', 'xbridger-connection'].includes(c.collector)) out.push({ key: `c:${c.key}:v`, label: c.title ?? c.id, unit: 'ms' });
-      for (const c of l.health ?? []) if (c.collector === 'wg-handshake') out.push({ key: `c:${c.key}:v`, label: 'Handshake age', unit: 's' });
-      return out;
-    }
-    const r = b.routes.find((x) => x.id === id);
-    if (r) return [
-      { key: `r:${id}:users`, label: 'Users', unit: 'users' },
-      { key: `r:${id}:lat`, label: 'Probe latency', unit: 'ms' },
-      { key: `r:${id}:fail`, label: 'Probe failures', unit: '' },
-    ];
-    throw new NotFoundException(`no node, link or route "${id}"`);
+  metrics(@Query('entity') entity?: string, @Query('keys') keys?: string, @Query('since') since?: string, @Query('until') until?: string, @Query('step') step?: string): Promise<Series[]> {
+    return this.q.metrics({ entity, keys: keys ? keys.split(',') : undefined, spanMs: parseDuration(since, 3_600_000), until: parseAt(until), stepMs: step ? parseDuration(step, 60_000) : undefined });
   }
 
   @Get('agents')
@@ -330,6 +238,38 @@ export class ApiController {
     } catch (e: any) {
       throw new BadRequestException(e.message);
     }
+  }
+
+  // ------------------------------------------------------------- assistant
+
+  @Get('assistant')
+  assistant() {
+    return this.hub.assistant.view();
+  }
+
+  /** Change assistant settings from the board. `key` is write-only ("" clears it). */
+  @Put('assistant')
+  async updateAssistant(@Body() body: AssistantPatch & { by?: string }) {
+    try {
+      const { by, ...patch } = body ?? {};
+      return await this.hub.assistant.update(patch, String(by ?? 'board').slice(0, 64));
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  @Get('assistant/models')
+  async assistantModels() {
+    try {
+      return await this.hub.assistant.models();
+    } catch (e: any) {
+      throw new BadRequestException(`cannot load the OpenRouter model list: ${e.message}`);
+    }
+  }
+
+  @Post('assistant/test')
+  assistantTest() {
+    return this.hub.assistant.test();
   }
 
   // ------------------------------------------------------------- demo
