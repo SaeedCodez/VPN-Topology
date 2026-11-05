@@ -8,6 +8,8 @@ import { Push } from '../engine/protocol';
 import { parseAt, parseDuration, Queries } from '../queries';
 import { AssistantPatch } from '../assistant/settings';
 import { linkName } from '../engine/evaluate';
+import { selectionFrom } from '../board/image';
+import { NotFound } from '../engine/views';
 
 export { parseAt };
 
@@ -220,6 +222,57 @@ export class ApiController {
       return { alert: body.alert, until: new Date(until).toISOString() };
     } catch (e: any) {
       throw new BadRequestException(e.message);
+    }
+  }
+
+  // ------------------------------------------------------------- board pictures
+
+  /**
+   * A picture of the board (PNG, or SVG with format=svg): the whole board, or
+   * route=, from=&to=[&via=a,b], nodes=a,b, links=e1,e3 (combinable).
+   * theme=light|dark, context=true keeps the rest dimmed, quality=file for full size.
+   */
+  @Get('board/image')
+  async boardImage(@Query() q: Record<string, string>, @Res() res: any) {
+    const img = await this.image(() =>
+      this.hub.images.render(selectionFrom(q), { at: parseAt(q.at), theme: q.theme === 'dark' ? 'dark' : 'light', context: q.context === 'true', labels: q.labels !== 'false', quality: q.quality === 'file' ? 'file' : 'photo' }),
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    if (q.format === 'svg') {
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.end(img.svg);
+      return;
+    }
+    res.setHeader('Content-Type', 'image/png');
+    if (q.download === 'true') res.setHeader('Content-Disposition', `attachment; filename="vpn-board-${img.at.slice(0, 16).replace('T', '-').replace(':', '')}.png"`);
+    res.end(img.png);
+  }
+
+  /** The board's "Send to Telegram": the same picture, to the alert chat. */
+  @Post('board/image/telegram')
+  async boardImageTelegram(@Body() body: Record<string, any>) {
+    const r = await this.image(() =>
+      this.hub.sendBoardImage(selectionFrom(body ?? {}), {
+        at: parseAt(body?.at),
+        theme: body?.theme === 'dark' ? 'dark' : 'light',
+        context: body?.context === true,
+        labels: body?.labels !== false,
+        asFile: body?.asFile === true ? true : 'auto',
+        caption: typeof body?.caption === 'string' ? body.caption.slice(0, 900) : undefined,
+        by: typeof body?.by === 'string' ? body.by.slice(0, 64) : 'board',
+      }),
+    );
+    if (!r.result.ok) throw new BadRequestException(`Telegram: ${r.result.error}`);
+    return { sent: true, asFile: r.asFile, ...r.image };
+  }
+
+  private async image<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e: any) {
+      if (e instanceof NotFound) throw new NotFoundException(e.message);
+      if (e?.status) throw e;
+      throw new BadRequestException(e?.message ?? String(e));
     }
   }
 

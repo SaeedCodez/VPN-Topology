@@ -174,9 +174,13 @@ id (a group id starts with `-100`), put both in Coolify, redeploy, then
 The Coolify server cannot reach `api.telegram.org`, so the hub talks to
 Telegram through a small Cloudflare Worker:
 [`apps/hub/deploy/telegram-relay.worker.js`](apps/hub/deploy/telegram-relay.worker.js).
-It forwards only `sendMessage`, `getUpdates` and `sendChatAction` and stores
-nothing. Set `TELEGRAM_API_ROOT` to the Worker URL (its `workers.dev` route
-must be enabled; Cloudflare answers `error code: 1042` otherwise).
+It forwards only `sendMessage`, `sendPhoto`, `sendDocument` (pictures of the
+board), `getUpdates` and `sendChatAction`, passing the request's content-type
+through (photos are multipart), and stores nothing. Set `TELEGRAM_API_ROOT` to
+the Worker URL (its `workers.dev` route must be enabled; Cloudflare answers
+`error code: 1042` otherwise). If you deployed the Worker before board
+pictures, paste the current file again so the new methods are allowed (an old
+Worker answers pictures with `404`).
 
 ### Telegram assistant (OpenRouter, read-only)
 
@@ -185,9 +189,10 @@ earlier answer) or write `/ask <question>`; an OpenRouter model answers in
 Persian from the same facts as the board.
 
 - **Read-only by construction**: its only tools are `list_entities`, `status`,
-  `diagnose`, `describe`, `why`, `path`, `events`, `metrics` (each with `at`).
+  `diagnose`, `describe`, `why`, `path`, `events`, `metrics` (each with `at`),
+  and `board_image`, which sends a picture of the board to the same chat.
   A reply to an alert looks at the moment of that alert; a reply to an answer
-  continues the conversation.
+  (or to a picture) continues the conversation.
 - **Settings on the board** (Assistant button): on/off, OpenRouter key, model,
   allowed Telegram user ids, questions per day, a Test button, today's usage
   and cost. Changes apply at once, no redeploy. The key is stored AES-GCM
@@ -200,6 +205,30 @@ Persian from the same facts as the board.
 - Privacy: questions and the board facts the model looks up (names, IPs,
   users, events) go to OpenRouter and the model's provider. Secrets are not
   part of the board data.
+
+### Pictures of the board
+
+The hub draws the board itself (same positions, cards, links, colours and
+sparklines as the web board, at any moment) and rasterises it with
+[resvg](https://github.com/yisibl/resvg-js) and the board's Geist fonts
+(`apps/hub/assets/fonts`, SIL OFL). No browser runs on the server.
+
+- **From Telegram**: ask the assistant, e.g. `/ask یه عکس از بورد کاربرها تا
+  سرور فرانسه تا اینترنت بفرست` or `/ask عکس کل بورد رو بفرست`. It picks the
+  part (whole board, a route, a path `from → via → to`, chosen nodes or links,
+  optionally with the surroundings dimmed, light or dark, at a past moment)
+  and replies with the photo. A big picture goes as a PNG file so the labels
+  stay readable; ask for "فایل با کیفیت کامل" to always get the file.
+- **From the board**: the camera button (bottom left) opens picture mode: click
+  nodes to pick them, or choose a route; nothing picked = the whole board.
+  Download PNG or Send to Telegram.
+- **API**: `GET /api/board/image?route=main` (or `from=users&via=france-exit&to=internet`,
+  `nodes=a,b`, `links=e3`, `at=-2h`, `theme=dark`, `context=true`,
+  `quality=file`, `format=svg`) returns the picture;
+  `POST /api/board/image/telegram` with the same fields sends it to the alert chat.
+- Shared with the board: `apps/hub/src/board/shared` (layout, icons, number
+  formats); the drawing mirrors `VpnNode.vue`, `TrafficEdge.vue` and
+  `GroupFrame.vue`, so change them together.
 
 ## Rollout runbook (the owner runs these; nothing here is run for you)
 

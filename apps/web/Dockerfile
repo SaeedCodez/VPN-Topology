@@ -7,6 +7,8 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/
 COPY apps/hub/src/contract.ts apps/hub/src/contract.ts
+# Layout, icons and number formats shared with the hub's board picture renderer.
+COPY apps/hub/src/board/shared apps/hub/src/board/shared
 RUN pnpm config set registry ${NPM_REGISTRY} && pnpm install --frozen-lockfile --filter @vpnmap/web
 COPY apps/web apps/web
 RUN pnpm --filter @vpnmap/web build

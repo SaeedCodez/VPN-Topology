@@ -34,7 +34,12 @@ export default defineNuxtConfig({
     },
   },
   // The board uses the hub's API types directly: one contract, no copies.
-  alias: { '#contract': fileURLToPath(new URL('../hub/src/contract', import.meta.url)) },
+  // Layout, icons and number formats are shared with the hub's image renderer, so a
+  // picture sent to Telegram has the same positions and icons as the board.
+  alias: {
+    '#contract': fileURLToPath(new URL('../hub/src/contract', import.meta.url)),
+    '#board': fileURLToPath(new URL('../hub/src/board/shared', import.meta.url)),
+  },
   nitro: {
     devProxy: {
       '/api': { target: `${hub}/api`, changeOrigin: true },

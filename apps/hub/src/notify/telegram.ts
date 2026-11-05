@@ -1,5 +1,6 @@
 /**
- * Sends messages to one Telegram chat through the Bot API (sendMessage).
+ * Sends messages to one Telegram chat through the Bot API (sendMessage, and
+ * sendPhoto/sendDocument for pictures of the board).
  * Messages go out one at a time in order; a failed send is retried with
  * backoff (and Telegram's retry_after on 429) so a short network blip does
  * not lose an alert, but nothing here can block or crash the hub's tick.
@@ -72,14 +73,33 @@ export class TelegramSender {
 
   /** Any Bot API method (getUpdates, sendChatAction, ...). Never throws; the token is never in the error. */
   async call(method: string, body: Record<string, unknown>, timeoutMs = 15_000): Promise<CallResult> {
+    return this.request(method, JSON.stringify(body), { 'content-type': 'application/json' }, timeoutMs);
+  }
+
+  /**
+   * Send a PNG to the chat: as a photo (Telegram recompresses it, shown inline)
+   * or as a file (full resolution). multipart/form-data, so the relay Worker
+   * must pass the request's content-type through (see deploy/telegram-relay.worker.js).
+   */
+  async sendImage(png: Buffer, opts: { caption?: string; replyTo?: number; asFile?: boolean; filename?: string } = {}): Promise<SendResult> {
+    const form = new FormData();
+    form.set('chat_id', this.cfg.chatId);
+    const field = opts.asFile ? 'document' : 'photo';
+    form.set(field, new Blob([new Uint8Array(png)], { type: 'image/png' }), opts.filename ?? 'board.png');
+    if (opts.caption) form.set('caption', opts.caption.slice(0, 1024));
+    if (opts.replyTo) form.set('reply_parameters', JSON.stringify({ message_id: opts.replyTo, allow_sending_without_reply: true }));
+    const r = await this.request(opts.asFile ? 'sendDocument' : 'sendPhoto', form, {}, 60_000);
+    if (r.ok) {
+      this.sent++;
+      return { ok: true, messageId: typeof r.result?.message_id === 'number' ? r.result.message_id : undefined };
+    }
+    return this.fail(r.error ?? 'error');
+  }
+
+  private async request(method: string, body: string | FormData, headers: Record<string, string>, timeoutMs: number): Promise<CallResult> {
     const url = `${this.cfg.apiRoot.replace(/\/+$/, '')}/bot${this.cfg.token}/${method}`;
     try {
-      const res = await this.fetchFn(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      const res = await this.fetchFn(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(timeoutMs) });
       const json: any = await res.json().catch(() => ({}));
       if (res.ok && json.ok !== false) return { ok: true, status: res.status, result: json.result };
       const retry = json?.parameters?.retry_after ? ` (retry after ${json.parameters.retry_after})` : '';
