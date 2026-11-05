@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/agentcfg"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // checksDir creates a trusted checks dir with the given scripts (0755).

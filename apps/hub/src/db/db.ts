@@ -2,6 +2,23 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Bundle, EventKind, HubEvent, TopologyVersion } from '../contract';
 import * as s from './schema';
 
+/** A stored ops plan (validated plan + approval + result). */
+export interface OpsTaskRow {
+  id: string;
+  status: string;
+  plan: any;
+  hash: string;
+  requestedBy: string;
+  approvedBy?: string | null;
+  chatId?: string | null;
+  messageIds?: number[];
+  createdAt: number;
+  approvedAt?: number | null;
+  finishedAt?: number | null;
+  log?: any[];
+  outcome?: string | null;
+}
+
 /** A message the hub sent to Telegram (alert, recovery, assistant answer). */
 export interface TelegramMessage {
   chatId: string;
@@ -208,6 +225,69 @@ export class Db {
       .onConflictDoNothing();
   }
 
+  // ---------------------------------------------------------------- ops tasks
+
+  async addOpsTask(t: OpsTaskRow) {
+    await this.db.insert(s.opsTasks).values({
+      id: t.id,
+      status: t.status,
+      plan: t.plan,
+      hash: t.hash,
+      requestedBy: t.requestedBy,
+      approvedBy: t.approvedBy ?? null,
+      chatId: t.chatId ?? null,
+      messageIds: t.messageIds ?? [],
+      createdAt: new Date(t.createdAt),
+      log: t.log ?? [],
+      outcome: t.outcome ?? null,
+    });
+  }
+
+  /** Plain update of the bookkeeping fields (never the status transitions below). */
+  async updateOpsTask(id: string, patch: Pick<Partial<OpsTaskRow>, 'messageIds' | 'log' | 'outcome' | 'finishedAt' | 'status'>) {
+    const set: any = {};
+    if (patch.status !== undefined) set.status = patch.status;
+    if (patch.messageIds !== undefined) set.messageIds = patch.messageIds;
+    if (patch.finishedAt !== undefined) set.finishedAt = patch.finishedAt ? new Date(patch.finishedAt) : null;
+    if (patch.log !== undefined) set.log = patch.log;
+    if (patch.outcome !== undefined) set.outcome = patch.outcome;
+    if (Object.keys(set).length) await this.db.update(s.opsTasks).set(set).where(eq(s.opsTasks.id, id));
+  }
+
+  /**
+   * Atomic status transition: only succeeds if the task is still in `from`
+   * (and, when given, still has `hash`). Two taps on Approve race here and
+   * exactly one wins; a plan whose stored hash changed is never approved.
+   */
+  async transitionOpsTask(id: string, from: string, to: string, extra: { approvedBy?: string; hash?: string; outcome?: string } = {}): Promise<boolean> {
+    const set: any = { status: to };
+    if (extra.approvedBy !== undefined) {
+      set.approvedBy = extra.approvedBy;
+      set.approvedAt = new Date();
+    }
+    if (extra.outcome !== undefined) set.outcome = extra.outcome;
+    if (['done', 'failed', 'rolled-back', 'cancelled', 'expired'].includes(to)) set.finishedAt = new Date();
+    const where = extra.hash !== undefined ? and(eq(s.opsTasks.id, id), eq(s.opsTasks.status, from), eq(s.opsTasks.hash, extra.hash)) : and(eq(s.opsTasks.id, id), eq(s.opsTasks.status, from));
+    const rows = await this.db.update(s.opsTasks).set(set).where(where).returning({ id: s.opsTasks.id });
+    return rows.length === 1;
+  }
+
+  async opsTask(id: string): Promise<OpsTaskRow | null> {
+    const rows = await this.db.select().from(s.opsTasks).where(eq(s.opsTasks.id, id)).limit(1);
+    return rows.length ? toOpsRow(rows[0]) : null;
+  }
+
+  async recentOpsTasks(limit = 20): Promise<OpsTaskRow[]> {
+    const rows = await this.db.select().from(s.opsTasks).orderBy(desc(s.opsTasks.createdAt)).limit(Math.min(limit, 200));
+    return rows.map(toOpsRow);
+  }
+
+  /** Finished change steps since `sinceMs` (for hub-side cooldowns). */
+  async opsTasksSince(sinceMs: number): Promise<OpsTaskRow[]> {
+    const rows = await this.db.select().from(s.opsTasks).where(gte(s.opsTasks.createdAt, new Date(sinceMs))).orderBy(desc(s.opsTasks.createdAt)).limit(10_000);
+    return rows.map(toOpsRow);
+  }
+
   async telegramMessage(chatId: string, messageId: number): Promise<TelegramMessage | null> {
     const rows = await this.db
       .select()
@@ -218,6 +298,25 @@ export class Db {
     const r = rows[0];
     return { chatId: r.chatId, messageId: Number(r.messageId), kind: r.kind, alertKey: r.alertKey ?? undefined, at: new Date(r.at).getTime(), text: r.text, thread: (r.thread as any) ?? undefined };
   }
+}
+
+function toOpsRow(r: any): OpsTaskRow {
+  const t = (v: any) => (v ? new Date(v).getTime() : null);
+  return {
+    id: r.id,
+    status: r.status,
+    plan: r.plan,
+    hash: r.hash,
+    requestedBy: r.requestedBy,
+    approvedBy: r.approvedBy ?? null,
+    chatId: r.chatId ?? null,
+    messageIds: ((r.messageIds as any[]) ?? []).map(Number),
+    createdAt: new Date(r.createdAt).getTime(),
+    approvedAt: t(r.approvedAt),
+    finishedAt: t(r.finishedAt),
+    log: (r.log as any[]) ?? [],
+    outcome: r.outcome ?? null,
+  };
 }
 
 function rowToEvent(r: any): HubEvent {

@@ -16,6 +16,8 @@ jobs:
         run: go run ./apps/cli validate
       - name: Schema is generated from the code
         run: go run ./apps/cli schema --check
+      - name: Hub copy of the ops action types is generated from the code
+        run: go run ./apps/cli ops types --check
 
   go:
     name: Go (cli, agent, topology)
@@ -24,10 +26,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: '1.24' }
-      - run: test -z "$(gofmt -l pkg apps/cli apps/agent)" || (gofmt -l pkg apps/cli apps/agent; exit 1)
+      - run: test -z "$(gofmt -l pkg apps/cli apps/agent apps/ops-runner)" || (gofmt -l pkg apps/cli apps/agent apps/ops-runner; exit 1)
       - run: go vet ./...
       - run: go test -race ./...
       - run: GOOS=linux GOARCH=arm64 go build -o /dev/null ./apps/agent
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /dev/null ./apps/ops-runner
+      - name: Ops action scripts parse
+        run: for f in apps/ops-runner/deploy/actions.d/* apps/ops-runner/deploy/*.sh; do bash -n "$f"; done
 
   node:
     name: Hub and board

@@ -1,0 +1,20 @@
+#!/bin/bash
+# vpnmap-ops action script: mullvad-current (read)
+#
+# Prints {"relay":"<hostname>"} for one country, taken from `mullvad-ns status`.
+# Used as read_before of mullvad-select, so a rollback can return to it.
+# It never reads /etc/mullvad-ns (that directory holds private keys).
+#
+# Installed root-owned (0755) in /etc/vpnmap-ops/actions.d/mullvad-current by the owner;
+# declared in the node's ops.scripts in the topology. The runner calls it with
+# --<param> <value> only, values already validated against the declared
+# enum/pattern; the script checks them again and runs fixed commands only.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # root-owned dirs only
+die() { echo "error: $*" >&2; exit 2; }
+[ "$#" -eq 2 ] && [ "$1" = --cc ] || die "usage: --cc <cc>"
+cc=$2
+[[ $cc =~ ^[a-z]{2}$ ]] || die "bad cc"
+relay=$(mullvad-ns status "$cc" | grep -oE '\b[a-z]{2}-[a-z]{3}-wg-[0-9]{3}\b' | head -1 || true)
+[ -n "$relay" ] || die "no relay hostname in mullvad-ns status $cc"
+printf '{"relay":"%s"}\n' "$relay"

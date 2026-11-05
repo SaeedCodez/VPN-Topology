@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"time"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/agentcfg"
+	"vpnmap/pkg/sysexec"
 )
 
 // Server answers helper requests. It runs as root, once per connection.

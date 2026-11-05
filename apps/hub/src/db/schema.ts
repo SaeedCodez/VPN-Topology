@@ -63,6 +63,27 @@ export const telegramMessages = pgTable('telegram_messages', {
   thread: jsonb('thread'),
 });
 
+/**
+ * Ops plans: a validated plan of catalog actions, its owner approval and the
+ * result. The plan is stored as validated; `hash` is checked again on
+ * approval and right before running.
+ */
+export const opsTasks = pgTable('ops_tasks', {
+  id: text('id').primaryKey(),
+  status: text('status').notNull().default('pending'),
+  plan: jsonb('plan').notNull(),
+  hash: text('hash').notNull(),
+  requestedBy: text('requested_by').notNull(),
+  approvedBy: text('approved_by'),
+  chatId: text('chat_id'),
+  messageIds: jsonb('message_ids').notNull().default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  log: jsonb('log').notNull().default([]),
+  outcome: text('outcome'),
+});
+
 export const schemaVersion = pgTable('schema_version', {
   version: integer('version').primaryKey(),
 });
@@ -115,4 +136,19 @@ export const MIGRATIONS: string[] = [
      text text NOT NULL DEFAULT '',
      thread jsonb,
      PRIMARY KEY (chat_id, message_id))`,
+  `CREATE TABLE IF NOT EXISTS ops_tasks (
+     id text PRIMARY KEY,
+     status text NOT NULL DEFAULT 'pending',
+     plan jsonb NOT NULL,
+     hash text NOT NULL,
+     requested_by text NOT NULL,
+     approved_by text,
+     chat_id text,
+     message_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     approved_at timestamptz,
+     finished_at timestamptz,
+     log jsonb NOT NULL DEFAULT '[]'::jsonb,
+     outcome text)`,
+  `CREATE INDEX IF NOT EXISTS ops_tasks_created_idx ON ops_tasks (created_at DESC)`,
 ];

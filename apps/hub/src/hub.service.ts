@@ -17,6 +17,7 @@ import { Simulator } from './sim/simulator';
 import { NotifyPlanner, OutMessage, esc, tehranTime } from './engine/notify';
 import { SendResult, TelegramSender } from './notify/telegram';
 import { AssistantService } from './assistant/service';
+import { OpsService } from './ops/service';
 import { SCENARIOS } from './sim/scenarios';
 import { BoardImage, BoardImages, ImageOptions } from './board/image';
 import { BoardSelection } from './board/select';
@@ -58,6 +59,8 @@ export class HubService {
   telegram: TelegramSender | null = null;
   /** Telegram assistant (settings always available; it listens only in live mode). */
   assistant!: AssistantService;
+  /** Ops actions: closed catalog, owner-approved plans (docs/ops-actions.md). */
+  ops!: OpsService;
   /** Pictures of the board (Telegram, API). */
   readonly images = new BoardImages(this);
   ready = false;
@@ -109,7 +112,9 @@ export class HubService {
     } else {
       console.log('telegram: off (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)');
     }
-    this.assistant = new AssistantService(this, this.telegram);
+    this.ops = new OpsService(this);
+    await this.ops.init();
+    this.assistant = new AssistantService(this, this.telegram, this.ops);
     await this.assistant.init();
     this.ready = true;
     this.timer = setInterval(() => void this.tick(Date.now()).catch((e) => console.error('tick failed', e)), this.cfg.tickMs);

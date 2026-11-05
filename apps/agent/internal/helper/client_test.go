@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // serveUnix emulates systemd's Accept=yes socket: one Server per connection.

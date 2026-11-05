@@ -36,6 +36,16 @@ nodes:
       - { id: online, label: Online, collector: remnawave-online }
     listens: [tcp/80]   # remnawave-nginx (HTTP)
     card: [api, cpu, mem]
+    ops:
+      runner: true
+      containers:
+        # rw-api hang 2026-10-20/22; same 10 min cooldown as the watchdog.
+        - { name: remnawave, restart: true }
+        - { name: remnawave-db, never_restart: true }
+        - { name: remnawave-redis, never_restart: true }
+        - { name: remnawave-subscription-page }
+      logs:
+        - { id: backup, path: /opt/remnawave-backup/backup.log }
     runbook:
       - { title: Containers and last backup, cmd: "ssh root@81.12.50.23 'docker ps --format \"table {{.Names}}\\t{{.Status}}\"; tail -3 /opt/remnawave-backup/backup.log'" }
       - { title: rw-api CPU (hang = ~100 %), cmd: "ssh root@81.12.50.23 'docker stats --no-stream remnawave'" }

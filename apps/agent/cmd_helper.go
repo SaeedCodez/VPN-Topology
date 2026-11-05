@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"vpnmap/apps/agent/internal/helper"
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/agentcfg"
+	"vpnmap/pkg/sysexec"
 )
 
 // agentUser is the unprivileged account allowed to talk to the helper.

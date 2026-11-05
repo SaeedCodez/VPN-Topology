@@ -1,0 +1,15 @@
+#!/bin/bash
+# vpnmap-ops action script: xbridger-doctor (read)
+#
+# Prints `xbridger doctor --json` from the node container.
+#
+# Installed root-owned (0755) in /etc/vpnmap-ops/actions.d/xbridger-doctor by the owner;
+# declared in the node's ops.scripts in the topology. The runner calls it with
+# --<param> <value> only, values already validated against the declared
+# enum/pattern; the script checks them again and runs fixed commands only.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # root-owned dirs only
+die() { echo "error: $*" >&2; exit 2; }
+CONTAINER=backend-app-1   # the XBridger node container on this server
+[ "$#" -eq 0 ] || die "takes no arguments"
+docker exec "$CONTAINER" xbridger doctor --json || true

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"strings"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // DockerTemplate makes `docker inspect` print only the six fields the board

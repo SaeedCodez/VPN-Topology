@@ -32,6 +32,36 @@ nodes:
       - { id: online, label: Online, collector: remnawave-online, node: Iran-Mullvad }
       - { id: conns, label: Conns, collector: ss-conns, host: iran-mullvad, ports: [443, 8443, 2053, 2083] }
     card: [online, conns, cpu]
+    ops:
+      runner: true
+      remnawave: [restart, disable, enable]
+      units:
+        - { name: game-gw.service }
+        - { name: wg-quick@wg-game.service }
+      scripts:
+        - id: mullvad-status
+          kind: read
+          title: mullvad-ns status
+          params: [{ name: cc, pattern: "^([a-z]{2}|all)$" }]
+        - id: mullvad-current
+          kind: read
+          title: Current relay of one country (JSON {relay})
+          params: [{ name: cc, pattern: "^[a-z]{2}$" }]
+        - id: mullvad-exit-check
+          kind: read
+          title: Exit IP and country through the country's SOCKS port
+          params: [{ name: cc, pattern: "^[a-z]{2}$" }]
+        - { id: game-status, kind: read, title: game-gw status }
+        - id: mullvad-select
+          kind: change
+          title: Switch the Mullvad relay of one country (08 #21, 2026-11-04)
+          params:
+            - { name: cc, enum: [de, us, tr, fr] }
+            - { name: relay, pattern: "^[a-z]{2}-[a-z]{3}-wg-[0-9]{3}$" }
+          read_before: { script: mullvad-current, args: { cc: "{cc}" } }
+          rollback: { script: mullvad-select, args: { cc: "{cc}", relay: "{before.relay}" } }
+          verify: ["link.e8-{cc}", "route.mullvad-{cc}"]
+          cooldown: 15m
     runbook:
       - { title: mullvad-ns status, cmd: "ssh root@92.42.207.243 'mullvad-ns status'" }
       - { title: Handshakes in every namespace, cmd: "ssh root@92.42.207.243 'for n in de us tr fr; do echo mv-$n; ip netns exec mv-$n wg show all latest-handshakes; done'" }
