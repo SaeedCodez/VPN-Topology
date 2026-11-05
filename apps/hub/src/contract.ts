@@ -129,6 +129,8 @@ export interface Bundle {
   alerts: TopoAlert[];
   layout: Record<string, { x: number; y: number }>;
   catalog: any[];
+  /** Resolved ops policy per node with an `ops:` block (pkg/ops NodePolicy). Older bundles have none. */
+  ops?: OpsNodePolicy[];
   source: { git_commit?: string; git_branch?: string; dirty: boolean; generated_at: string; generator: string };
   hash: string;
 }
@@ -278,7 +280,8 @@ export type EventKind =
   | 'log'
   | 'agent'
   | 'topology'
-  | 'demo';
+  | 'demo'
+  | 'ops';
 
 export interface HubEvent {
   id: number;
@@ -401,4 +404,165 @@ export interface AssistantTestResult {
   reply?: string;
   costUsd?: number | null;
   error?: string;
+}
+
+// ---------------------------------------------------------------- ops actions (docs/ops-actions.md)
+
+/** pkg/ops Param. */
+export interface OpsParam {
+  name: string;
+  source?: string;
+  enum?: string[];
+  pattern?: string;
+  min?: number;
+  max?: number;
+  doc?: string;
+}
+
+/** pkg/ops Type (apps/hub/src/ops/types.gen.json). */
+export interface OpsType {
+  name: string;
+  kind: 'read' | 'change';
+  where: 'server' | 'remnawave';
+  title: string;
+  doc: string;
+  params: OpsParam[] | null;
+  disruptive: boolean;
+  cooldown?: string;
+  rollback?: string;
+}
+
+/** pkg/ops RunnerConfig: what the runner on one server allows. */
+export interface OpsRunnerConfig {
+  node: string;
+  containers?: { name: string; restart?: boolean; cooldown?: string }[];
+  units?: { name: string; restart?: boolean; cooldown?: string }[];
+  logs?: { id: string; path: string }[];
+  tcp_targets?: string[];
+  ports?: number[];
+  wg?: { iface: string; netns?: string }[];
+  scripts?: { id: string; kind: 'read' | 'change'; params?: OpsParam[]; timeout?: string; cooldown?: string }[];
+}
+
+export interface OpsCall {
+  script: string;
+  args?: Record<string, string>;
+}
+
+/** pkg/ops NodePolicy. */
+export interface OpsNodePolicy {
+  node: string;
+  runner: boolean;
+  address?: string;
+  config?: OpsRunnerConfig;
+  config_hash?: string;
+  verify: string[];
+  cuts_users: boolean;
+  cut_routes?: string[];
+  scripts?: { id: string; title?: string; disruptive: boolean; read_before?: OpsCall; rollback?: OpsCall; verify?: string[] }[];
+  never_restart?: string[];
+  remnawave?: { name: string; actions: string[] };
+}
+
+/** One step of a plan as the model proposes it. */
+export interface OpsStepInput {
+  node: string;
+  type: string;
+  args?: Record<string, string>;
+}
+
+export interface OpsPlanInput {
+  title: string;
+  why: string;
+  impact: string;
+  steps: OpsStepInput[];
+}
+
+/** A validated step: everything the approval message shows and the executor runs. */
+export interface OpsStep {
+  node: string;
+  type: string;
+  args: Record<string, string>;
+  /** Canonical request line sent to the runner (server types), or the Remnawave call. */
+  line: string;
+  where: 'server' | 'remnawave';
+  title: string;
+  verify: string[];
+  cutsUsers: boolean;
+  cutRoutes: string[];
+  cooldownS: number;
+  reversible: boolean;
+  /** Rollback as a step template; "{before.x}" is filled from readBefore output. */
+  rollback: { type: string; args: Record<string, string> } | null;
+  readBefore: { type: string; args: Record<string, string> } | null;
+}
+
+export interface OpsPlan {
+  title: string;
+  why: string;
+  impact: string;
+  steps: OpsStep[];
+  /** Union of the steps' verify ids. */
+  verify: string[];
+  cutsUsers: boolean;
+}
+
+export type OpsTaskStatus = 'pending' | 'confirming' | 'approved' | 'running' | 'done' | 'failed' | 'rolled-back' | 'cancelled' | 'expired';
+
+export interface OpsStepLog {
+  index: number;
+  node: string;
+  line: string;
+  status: 'ok' | 'failed' | 'rolled-back' | 'skipped' | 'rollback';
+  output: string;
+  at: string;
+}
+
+export interface OpsTaskView {
+  id: string;
+  status: OpsTaskStatus;
+  title: string;
+  why: string;
+  impact: string;
+  steps: OpsStep[];
+  verify: string[];
+  cutsUsers: boolean;
+  requestedBy: string;
+  approvedBy: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  log: OpsStepLog[];
+  outcome: string | null;
+}
+
+export interface OpsServerView {
+  node: string;
+  name: string;
+  /** SSH host: the override, or the node's first address. */
+  host: string;
+  port: number;
+  access: 'on' | 'off' | { until: string };
+  reachable: boolean;
+  /** Pinned host-key fingerprint ("SHA256:..."), entered by the owner. */
+  hostKey: string | null;
+  /** Hash the topology expects vs. the one the runner last reported. */
+  expectedConfig: string | null;
+  reportedConfig: string | null;
+  configCurrent: boolean;
+  lastOkAt: string | null;
+  lastError: string | null;
+  cutsUsers: boolean;
+  changes: string[];
+}
+
+export interface OpsSettingsView {
+  enabled: boolean;
+  actionModel: string;
+  approverUserIds: string[];
+  sshPublicKey: string | null;
+  servers: OpsServerView[];
+  remnawave: { node: string; name: string; actions: string[] }[];
+  running: string | null;
+  /** In demo mode ops runs against the simulator and never opens SSH. */
+  demo: boolean;
 }

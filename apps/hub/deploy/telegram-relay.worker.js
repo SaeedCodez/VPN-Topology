@@ -5,12 +5,17 @@
 // env (it is part of the request path, as Telegram requires).
 // Deploy: Workers & Pages → Create → Hello World → paste → Deploy, then set
 // TELEGRAM_API_ROOT=https://<worker>.<account>.workers.dev in Coolify.
-const ALLOWED = /^\/bot\d+:[\w-]+\/(sendMessage|sendPhoto|sendDocument|getUpdates|sendChatAction)$/;
+// Optional: set the Worker variable BOT_ID to your bot's numeric id (the part
+// of the token before ":"; not a secret) so the relay serves only that bot.
+// answerCallbackQuery / editMessageText / editMessageReplyMarkup are the ops
+// approval buttons.
+const ALLOWED = /^\/bot(\d+):[\w-]+\/(sendMessage|sendPhoto|sendDocument|getUpdates|sendChatAction|answerCallbackQuery|editMessageText|editMessageReplyMarkup)$/;
 
 export default {
-  async fetch(req) {
+  async fetch(req, env) {
     const { pathname } = new URL(req.url);
-    if (req.method !== 'POST' || !ALLOWED.test(pathname)) {
+    const m = ALLOWED.exec(pathname);
+    if (req.method !== 'POST' || !m || (env && env.BOT_ID && m[1] !== String(env.BOT_ID))) {
       return new Response('not found', { status: 404 });
     }
     return fetch('https://api.telegram.org' + pathname, {

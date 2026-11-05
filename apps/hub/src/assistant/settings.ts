@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'crypto';
+import { Box, open, seal } from '../secretbox';
 import { AssistantSettingsView } from '../contract';
 
 /**
@@ -32,25 +32,14 @@ export interface AssistantPatch {
   key?: string;
 }
 
-function derive(secret: string): Buffer {
-  return Buffer.from(hkdfSync('sha256', secret, 'vpnmap-settings', 'assistant-openrouter-key', 32));
+const PURPOSE = 'assistant-openrouter-key';
+
+export function encrypt(plain: string, secret: string): Box {
+  return seal(plain, secret, PURPOSE);
 }
 
-export function encrypt(plain: string, secret: string): { iv: string; tag: string; data: string } {
-  const iv = randomBytes(12);
-  const c = createCipheriv('aes-256-gcm', derive(secret), iv);
-  const data = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
-  return { iv: iv.toString('base64'), tag: c.getAuthTag().toString('base64'), data: data.toString('base64') };
-}
-
-export function decrypt(box: { iv: string; tag: string; data: string }, secret: string): string | null {
-  try {
-    const d = createDecipheriv('aes-256-gcm', derive(secret), Buffer.from(box.iv, 'base64'));
-    d.setAuthTag(Buffer.from(box.tag, 'base64'));
-    return Buffer.concat([d.update(Buffer.from(box.data, 'base64')), d.final()]).toString('utf8');
-  } catch {
-    return null;
-  }
+export function decrypt(box: Box, secret: string): string | null {
+  return open(box, secret, PURPOSE);
 }
 
 export function keyHint(key: string): string {

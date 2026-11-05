@@ -1,0 +1,205 @@
+{
+ "_comment": "Shared by pkg/redact (Go) and apps/hub/src/redact.ts (TypeScript): both must give these exact results.",
+ "string": [
+  {
+   "name": "empty",
+   "in": "",
+   "want": ""
+  },
+  {
+   "name": "plain",
+   "in": "connection accepted from 10.0.0.5:51234",
+   "want": "connection accepted from 10.0.0.5:51234"
+  },
+  {
+   "name": "ipv4 and host kept",
+   "in": "dial tcp 81.0.0.1:443 via relay.example.com:8443 ok",
+   "want": "dial tcp 81.0.0.1:443 via relay.example.com:8443 ok"
+  },
+  {
+   "name": "ipv6 kept",
+   "in": "listen [2001:db8::1]:443",
+   "want": "listen [2001:db8::1]:443"
+  },
+  {
+   "name": "time kept",
+   "in": "2026/11/01 12:00:00 started",
+   "want": "2026/11/01 12:00:00 started"
+  },
+  {
+   "name": "password kv",
+   "in": "login user=admin password=hunter2 ok",
+   "want": "login user=admin password=[REDACTED] ok"
+  },
+  {
+   "name": "passwd colon",
+   "in": "passwd: s3cr3t",
+   "want": "passwd: [REDACTED]"
+  },
+  {
+   "name": "pass exact",
+   "in": "pass=abc&user=x",
+   "want": "pass=[REDACTED]&user=x"
+  },
+  {
+   "name": "secret upper",
+   "in": "SECRET_KEY=abcdef123",
+   "want": "SECRET_KEY=[REDACTED]"
+  },
+  {
+   "name": "jwt secret",
+   "in": "JWT_AUTH_SECRET=xyz",
+   "want": "JWT_AUTH_SECRET=[REDACTED]"
+  },
+  {
+   "name": "jwt key",
+   "in": "jwt: abc",
+   "want": "jwt: [REDACTED]"
+  },
+  {
+   "name": "token json",
+   "in": "{\"token\":\"abc.def\",\"node\":\"relay-1\"}",
+   "want": "{\"token\":\"[REDACTED]\",\"node\":\"relay-1\"}"
+  },
+  {
+   "name": "access_token query",
+   "in": "GET /cb?access_token=abc123&x=1",
+   "want": "GET /cb?access_token=[REDACTED]&x=1"
+  },
+  {
+   "name": "apikey",
+   "in": "apikey=zzz api_key=yyy x-api-key: www",
+   "want": "apikey=[REDACTED] api_key=[REDACTED] x-api-key: [REDACTED]"
+  },
+  {
+   "name": "private_key",
+   "in": "private_key = 'abc'",
+   "want": "private_key = '[REDACTED]'"
+  },
+  {
+   "name": "privateKey json",
+   "in": "\"privateKey\": \"abc\"",
+   "want": "\"privateKey\": \"[REDACTED]\""
+  },
+  {
+   "name": "shortIds array",
+   "in": "\"shortIds\": [\"ab12\", \"cd34\"], \"dest\": \"example.com:443\"",
+   "want": "\"shortIds\": [REDACTED], \"dest\": \"example.com:443\""
+  },
+  {
+   "name": "short_id",
+   "in": "short_id=0a1b",
+   "want": "short_id=[REDACTED]"
+  },
+  {
+   "name": "sid exact only",
+   "in": "sid=0a1b side=local",
+   "want": "sid=[REDACTED] side=local"
+  },
+  {
+   "name": "authorization bearer",
+   "in": "Authorization: Bearer abc.def.ghi",
+   "want": "Authorization: Bearer [REDACTED]"
+  },
+  {
+   "name": "authorization basic",
+   "in": "authorization=Basic dXNlcjpwYXNz",
+   "want": "authorization=Basic [REDACTED]"
+  },
+  {
+   "name": "authorization json",
+   "in": "\"Authorization\":\"Bearer xyz123\"",
+   "want": "\"Authorization\":\"Bearer [REDACTED]\""
+  },
+  {
+   "name": "bare bearer",
+   "in": "curl -H bearer abcdef123456 http://x",
+   "want": "curl -H bearer [REDACTED] http://x"
+  },
+  {
+   "name": "url userinfo",
+   "in": "connect postgres://admin:p4ss@db.local:5432/x",
+   "want": "connect postgres://[REDACTED]@db.local:5432/x"
+  },
+  {
+   "name": "url userinfo with at in password",
+   "in": "https://u:p@ss@host.example.com/x",
+   "want": "https://[REDACTED]@host.example.com/x"
+  },
+  {
+   "name": "url without userinfo kept",
+   "in": "GET https://map.example.com/api/ingest/v1/push",
+   "want": "GET https://map.example.com/api/ingest/v1/push"
+  },
+  {
+   "name": "secret inside innocent quoted value",
+   "in": "level=info msg=\"login ok password=hunter2\"",
+   "want": "level=info msg=\"login ok password=[REDACTED]\""
+  },
+  {
+   "name": "secret inside innocent bare value",
+   "in": "next=/login?token=abc",
+   "want": "next=/login?token=[REDACTED]"
+  },
+  {
+   "name": "jwt blob",
+   "in": "got eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.abcDEF123_- here",
+   "want": "got [REDACTED] here"
+  },
+  {
+   "name": "uuid",
+   "in": "user 3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708 connected",
+   "want": "user [REDACTED] connected"
+  },
+  {
+   "name": "vless link",
+   "in": "vless://3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708@relay.example.com:443?security=reality",
+   "want": "vless://[REDACTED]@relay.example.com:443?security=reality"
+  },
+  {
+   "name": "wg key",
+   "in": "peer aGVsbG8gd29ybGQgdGhpcyBpcyBhIHRlc3Qga2V5IDE=",
+   "want": "peer [REDACTED]"
+  },
+  {
+   "name": "hex sha256",
+   "in": "image sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+   "want": "image sha256:[REDACTED]"
+  },
+  {
+   "name": "base64url key",
+   "in": "pbk=Zx9_yQ3kLm8NpR2sTv5WxA7bCd1EfGh4IjKl6MnOp0Q tail",
+   "want": "pbk=[REDACTED] tail"
+  },
+  {
+   "name": "long path kept",
+   "in": "open /var/lib/vpnmap-agent/state_file_2024_Backup.json",
+   "want": "open /var/lib/vpnmap-agent/state_file_2024_Backup.json"
+  },
+  {
+   "name": "snake identifier kept",
+   "in": "unit remnawave_backup_age_check_for_node_1 ok",
+   "want": "unit remnawave_backup_age_check_for_node_1 ok"
+  },
+  {
+   "name": "long word kept",
+   "in": "Supercalifragilisticexpialidociouslyx",
+   "want": "Supercalifragilisticexpialidociouslyx"
+  },
+  {
+   "name": "short hex kept",
+   "in": "connection mt6snj5mlbnn status ok",
+   "want": "connection mt6snj5mlbnn status ok"
+  },
+  {
+   "name": "cookie",
+   "in": "Cookie: session=abc; theme=dark",
+   "want": "Cookie: [REDACTED]; theme=dark"
+  },
+  {
+   "name": "natural language kept",
+   "in": "no secret found, token expired: please re-login",
+   "want": "no secret found, token expired: please re-login"
+  }
+ ]
+}

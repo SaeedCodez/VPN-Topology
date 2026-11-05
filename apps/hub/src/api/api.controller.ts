@@ -7,6 +7,7 @@ import { HubService } from '../hub.service';
 import { Push } from '../engine/protocol';
 import { parseAt, parseDuration, Queries } from '../queries';
 import { AssistantPatch } from '../assistant/settings';
+import { OpsPatch } from '../ops/settings';
 import { linkName } from '../engine/evaluate';
 import { selectionFrom } from '../board/image';
 import { NotFound } from '../engine/views';
@@ -28,7 +29,7 @@ export class ApiController {
   @Public()
   @Get('health')
   health() {
-    return { ok: this.hub.ready, mode: this.hub.cfg.mode, topologyVersion: this.hub.version, tsdb: this.hub.tsdb?.name, db: this.hub.db?.driver, telegram: this.hub.telegram ? 'on' : 'off' };
+    return { ok: this.hub.ready, mode: this.hub.cfg.mode, topologyVersion: this.hub.version, tsdb: this.hub.tsdb?.name, db: this.hub.db?.driver, telegram: this.hub.telegram ? 'on' : 'off', ops: this.hub.ops?.enabled ? 'on' : 'off' };
   }
 
   @Public()
@@ -323,6 +324,49 @@ export class ApiController {
   @Post('assistant/test')
   assistantTest() {
     return this.hub.assistant.test();
+  }
+
+  // ------------------------------------------------------------- ops (docs/ops-actions.md)
+  // Behind the global auth guard; every write is refused in demo mode (which
+  // has no login) except the kill switch.
+
+  @Get('ops')
+  ops() {
+    return this.hub.ops.view();
+  }
+
+  @Put('ops')
+  async updateOps(@Body() body: OpsPatch & { by?: string }) {
+    try {
+      const { by, ...patch } = body ?? {};
+      const v = await this.hub.ops.update(patch, String(by ?? 'board').slice(0, 64));
+      this.hub.assistant.refresh();
+      return v;
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  @Get('ops/servers/:node/grant')
+  opsGrant(@Param('node') node: string) {
+    if (this.hub.cfg.mode === 'demo') throw new BadRequestException('ops actions are disabled in demo mode');
+    const g = this.hub.ops.grantFor(node);
+    if (!g) throw new NotFoundException(`${node} has no runner, or ops has no SSH key yet (switch ops on first)`);
+    return g;
+  }
+
+  @Post('ops/servers/:node/test')
+  async opsTest(@Param('node') node: string) {
+    try {
+      return await this.hub.ops.serverTest(node);
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  @Get('ops/tasks')
+  opsTasks() {
+    return this.hub.ops.tasks();
   }
 
   // ------------------------------------------------------------- demo
