@@ -402,3 +402,77 @@ export interface AssistantTestResult {
   costUsd?: number | null;
   error?: string;
 }
+
+// -------------------------------------------------------------------- ops agent
+
+export interface OpsServerView {
+  id: string;
+  host: string;
+  port: number;
+  user: string;
+  nodeId: string | null;
+  access: 'on' | 'off' | 'window' | 'expired';
+  accessUntil: string | null;
+  hostKey: string | null;
+  lastOkAt: string | null;
+  note: string | null;
+}
+
+export interface OpsSettingsView {
+  enabled: boolean;
+  actionModel: string;
+  approverUserIds: string[];
+  hubIp: string;
+  hasKey: boolean;
+  /** OpenSSH one-line public key to install on a server (the private key is never returned). */
+  publicKey: string | null;
+  servers: OpsServerView[];
+}
+
+export type OpsTaskStatus = 'pending' | 'approved' | 'running' | 'done' | 'failed' | 'rolled-back' | 'cancelled' | 'expired';
+
+/** One step of an ops plan. `run` is a shell command (on `target` server id) or a Remnawave API call (target "remnawave"). */
+export interface OpsStep {
+  target: string;
+  run: string | { method: string; path: string; body?: unknown };
+  purpose?: string;
+  /** Files copied aside before the step so it can be undone. */
+  backup?: string[];
+  /** How to undo the step: a command / API call, or "restore" to put the backups back. */
+  rollback?: string | { method: string; path: string; body?: unknown } | 'restore' | null;
+  critical?: boolean;
+}
+
+export interface OpsPlan {
+  title: string;
+  why: string;
+  impact: string;
+  steps: OpsStep[];
+  /** Node/link/route ids to re-check after each step; worse than baseline → rollback. */
+  verify: string[];
+}
+
+export interface OpsStepLog {
+  index: number;
+  target: string;
+  summary: string;
+  status: 'ok' | 'failed' | 'rolled-back' | 'skipped';
+  output: string;
+  at: string;
+}
+
+export interface OpsTaskView {
+  id: string;
+  status: OpsTaskStatus;
+  title: string;
+  why: string;
+  impact: string;
+  steps: { target: string; summary: string; rollback: string }[];
+  verify: string[];
+  requestedBy: string;
+  approvedBy: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  log: OpsStepLog[];
+  outcome: string | null;
+}
