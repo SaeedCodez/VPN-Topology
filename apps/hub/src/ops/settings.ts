@@ -1,4 +1,4 @@
-import { createHash, generateKeyPairSync } from 'crypto';
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes } from 'crypto';
 import { Bundle, OpsServerView } from '../contract';
 import { Box, open, seal } from '../secretbox';
 import { stable } from './plan';
@@ -98,8 +98,36 @@ export function opsKeyOpenSsh(s: StoredOps): string | null {
   return s.sshPublicKey ? toOpenSsh(s.sshPublicKey) : null;
 }
 
+/** The private key for ssh2, which reads ed25519 keys only in the OpenSSH format (not PKCS8 PEM). */
 export function opsPrivateKey(s: StoredOps, secret: string): string | null {
-  return s.sshPrivateKey ? open(s.sshPrivateKey, secret, SSH_PURPOSE) : null;
+  const pem = s.sshPrivateKey ? open(s.sshPrivateKey, secret, SSH_PURPOSE) : null;
+  return pem ? toOpenSshPrivate(pem) : null;
+}
+
+/** PKCS8 PEM ed25519 → unencrypted "openssh-key-v1" private key. */
+export function toOpenSshPrivate(pem: string): string {
+  const jwk = createPrivateKey(pem).export({ format: 'jwk' }) as { d?: string; x?: string; crv?: string };
+  if (jwk.crv !== 'Ed25519' || !jwk.d || !jwk.x) throw new Error('ops key is not ed25519');
+  const seed = Buffer.from(jwk.d, 'base64url');
+  const pub = Buffer.from(jwk.x, 'base64url');
+  const u32 = (n: number) => {
+    const b = Buffer.alloc(4);
+    b.writeUInt32BE(n);
+    return b;
+  };
+  const str = (b: Buffer | string) => {
+    const x = Buffer.isBuffer(b) ? b : Buffer.from(b);
+    return Buffer.concat([u32(x.length), x]);
+  };
+  const pubBlob = Buffer.concat([str('ssh-ed25519'), str(pub)]);
+  const check = randomBytes(4);
+  let priv = Buffer.concat([check, check, str('ssh-ed25519'), str(pub), str(Buffer.concat([seed, pub])), str('vpnmap-hub')]);
+  const pad: number[] = [];
+  for (let i = 1; (priv.length + pad.length) % 8 !== 0; i++) pad.push(i);
+  priv = Buffer.concat([priv, Buffer.from(pad)]);
+  const body = Buffer.concat([Buffer.from('openssh-key-v1\0'), str('none'), str('none'), str(''), u32(1), str(pubBlob), str(priv)]);
+  const b64 = body.toString('base64').replace(/(.{70})/g, '$1\n').trim();
+  return `-----BEGIN OPENSSH PRIVATE KEY-----\n${b64}\n-----END OPENSSH PRIVATE KEY-----\n`;
 }
 
 export function serverReachable(s: StoredOps, node: string, now = Date.now()): boolean {

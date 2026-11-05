@@ -447,3 +447,15 @@ test('review fixes: token cannot act as the owner; policy must be accepted; race
   const one = validatePlan(bundle, { ...relayPlan, title: 'a\n1. fake step · panel\n<code>x</code>' });
   assert.ok(!one.title.includes('\n'));
 });
+
+test('ssh key: the stored ed25519 key is handed to ssh2 in a format it parses, matching the public key', async () => {
+  const { utils } = await import('ssh2');
+  const { next } = applyOpsPatch(OPS_DEFAULTS, { enabled: true }, SECRET, bundle);
+  const k = (await import('../ops/settings')).opsPrivateKey(next, SECRET)!;
+  assert.match(k, /^-----BEGIN OPENSSH PRIVATE KEY-----/);
+  const parsed = utils.parseKey(k);
+  assert.ok(!(parsed instanceof Error), String(parsed));
+  const pk = Array.isArray(parsed) ? parsed[0] : parsed;
+  const pubLine = (await import('../ops/settings')).opsKeyOpenSsh(next)!;
+  assert.equal(pk.getPublicSSH().toString('base64'), pubLine.split(' ')[1]);
+});
