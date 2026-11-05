@@ -91,14 +91,14 @@ func TestRunnerFixedArgv(t *testing.T) {
 	sc := loadShared(t)
 	g := newRig(t, &sc.Config)
 	cases := map[string]string{
-		"container.stats container=db":                           "docker stats --no-stream --format {{.Name}}\tcpu={{.CPUPerc}}\tmem={{.MemUsage}}\tpids={{.PIDs}} db",
-		"container.logs container=app since=15m tail=100":        "docker logs --since 15m --tail 100 app",
-		"container.restart container=app":                        "docker restart --time 20 app",
-		"unit.status unit=mullvad-ns@de.service":                 "systemctl show mullvad-ns@de.service --no-pager --property=Id,ActiveState,SubState,Result,ActiveEnterTimestamp,NRestarts,MainPID",
-		"unit.restart unit=x-ui.service":                         "systemctl restart x-ui.service",
-		"disk.usage":                                             "df -P -h /",
+		"container.stats container=db":                          "docker stats --no-stream --format {{.Name}}\tcpu={{.CPUPerc}}\tmem={{.MemUsage}}\tpids={{.PIDs}} db",
+		"container.logs container=app since=15m tail=100":       "docker logs --since 15m --tail 100 app",
+		"container.restart container=app":                       "docker restart --time 20 app",
+		"unit.status unit=mullvad-ns@de.service":                "systemctl show mullvad-ns@de.service --no-pager --property=Id,ActiveState,SubState,Result,ActiveEnterTimestamp,NRestarts,MainPID",
+		"unit.restart unit=x-ui.service":                        "systemctl restart x-ui.service",
+		"disk.usage":                                            "df -P -h /",
 		"script.change script=select cc=de relay=de-dus-wg-103": filepath.Join(g.r.ScriptDir, "select") + " --cc de --relay de-dus-wg-103",
-		"script.read script=doctor":                              filepath.Join(g.r.ScriptDir, "doctor"),
+		"script.read script=doctor":                             filepath.Join(g.r.ScriptDir, "doctor"),
 	}
 	for line, want := range cases {
 		g.on(want, "fine")
