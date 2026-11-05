@@ -43,6 +43,8 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then sed -i "s#https\?://dl-cdn.alpinelinux.org/
 WORKDIR /app
 COPY --from=build /deploy/node_modules ./node_modules
 COPY --from=build /app/apps/hub/dist ./dist
+# Geist fonts for the board pictures (Telegram, /api/board/image).
+COPY apps/hub/assets ./assets
 COPY --from=go /out/vpnmap /usr/local/bin/vpnmap
 COPY --from=go /out/agent /app/agent-dist
 # Topology files for the very first start (afterwards versions live in Postgres

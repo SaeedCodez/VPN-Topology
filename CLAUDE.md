@@ -43,7 +43,7 @@ pkg/agentcfg, pkg/protocol    agent config file and agent → hub push payload
 pkg/redact                    secret redaction shared by CLI and agent
 apps/cli                      `vpnmap` (Go)
 apps/agent                    `vpnmap-agent` (Go), deploy/ has units, install/uninstall, checks.d examples
-apps/hub                      NestJS hub: ingest, resolvers, evaluation, root cause, alerts, Telegram + assistant, API, WebSocket, demo simulator
+apps/hub                      NestJS hub: ingest, resolvers, evaluation, root cause, alerts, Telegram + assistant, board pictures (src/board), API, WebSocket, demo simulator
 apps/web                      Nuxt 3 board (Vue Flow, Tailwind, ECharts); types come from apps/hub/src/contract.ts
 .claude/skills                add-component, diagnose-outage
 ```
@@ -121,6 +121,11 @@ the board's "Replay incident" menu starts one live.
 Tests: `go test ./...`, `pnpm --filter @vpnmap/hub test` (replays incidents and
 asserts the root cause), board: `vue-tsc` + `nuxi generate`. CI runs
 `vpnmap validate` on every PR.
+
+Board pictures (`apps/hub/src/board`, Telegram `board_image`, `/api/board/image`)
+are drawn by the hub from the same layout and snapshot; `board/shared` is also
+used by the web board, and `render.ts` mirrors `VpnNode.vue`/`TrafficEdge.vue`,
+so a visual change to a card or link goes to both.
 
 Code style: TypeScript strict, small pure functions for evaluation (no I/O in
 `apps/hub/src/engine`), NestJS only at the edges; Go with the standard library

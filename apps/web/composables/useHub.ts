@@ -192,6 +192,32 @@ const assistant = {
   test: () => api<AssistantTestResult>('/api/assistant/test', { method: 'POST', body: '{}' }),
 }
 
+/** Pictures of the board: the hub draws them (same as the Telegram assistant sends). */
+export interface BoardPictureQuery {
+  nodes?: string[]
+  route?: string
+  context?: boolean
+  theme?: 'light' | 'dark'
+}
+function pictureParams(q: BoardPictureQuery): Record<string, string> {
+  const p: Record<string, string> = { theme: q.theme ?? 'light' }
+  if (q.route) p.route = q.route
+  if (q.nodes?.length) p.nodes = q.nodes.join(',')
+  if (q.context) p.context = 'true'
+  if (at.value !== null) p.at = new Date(at.value).toISOString()
+  return p
+}
+const board = {
+  pictureUrl: (q: BoardPictureQuery, download = false) => `/api/board/image?${new URLSearchParams({ ...pictureParams(q), ...(download ? { download: 'true', quality: 'file' } : {}) })}`,
+  sendPicture: (q: BoardPictureQuery) => {
+    const p = pictureParams(q)
+    return api<{ sent: boolean; asFile: boolean; title: string }>('/api/board/image/telegram', {
+      method: 'POST',
+      body: JSON.stringify({ ...p, nodes: q.nodes ?? [], context: !!q.context, by: 'board' }),
+    })
+  },
+}
+
 export function useHub() {
   const snapshot = computed(() => (at.value !== null ? pastSnapshot.value ?? liveSnapshot.value : liveSnapshot.value))
   return {
@@ -219,5 +245,6 @@ export function useHub() {
     scenarios,
     play,
     assistant,
+    board,
   }
 }

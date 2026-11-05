@@ -7,9 +7,11 @@ import { ChatFn, listModels, openRouterChat } from './openrouter';
 import { AssistantPatch, applyPatch, decrypt, DEFAULTS, publicView, SETTINGS_KEY, StoredAssistant } from './settings';
 import { ReadApi, ToolContext } from './tools';
 import { decide, TgMessage } from './trigger';
+import { selectionFrom } from '../board/image';
 
 const OFFSET_KEY = 'telegram_offset';
 const MAX_PARALLEL = 2;
+const MAX_PICTURES = 3;
 /** Questions older than this when the hub sees them (hub was down) are skipped. */
 const STALE_MS = 10 * 60_000;
 
@@ -17,7 +19,8 @@ const STALE_MS = 10 * 60_000;
  * The Telegram assistant: settings (from the board), the getUpdates loop
  * (through TELEGRAM_API_ROOT, i.e. the Cloudflare Worker), and one agent run
  * per question. Polling runs only in live mode, with Telegram configured and
- * the assistant enabled with a key and a model. It only reads (see tools.ts).
+ * the assistant enabled with a key and a model. It only reads (see tools.ts);
+ * board_image sends a picture of the board to the same chat.
  */
 export class AssistantService {
   private settings: StoredAssistant = { ...DEFAULTS };
@@ -181,11 +184,13 @@ export class AssistantService {
       const prev = d.replyToBotMessage !== null ? await this.hub.db.telegramMessage(tg.chatId, d.replyToBotMessage) : null;
       const thread = prev?.kind === 'answer' ? prev.thread ?? [] : [];
       const replyTo = prev && prev.kind !== 'answer' ? { kind: prev.kind, alertKey: prev.alertKey, at: prev.at, text: prev.text } : undefined;
+      const pictures: number[] = [];
       const tools: ToolContext = {
         api: this.readApi(),
-        defaultAt: replyTo && (replyTo.kind === 'alert' || replyTo.kind === 'resolved') ? replyTo.at : null,
+        defaultAt: replyTo && (replyTo.kind === 'alert' || replyTo.kind === 'resolved' || replyTo.kind === 'image') ? replyTo.at : null,
         parseAt,
         parseDuration,
+        image: (a, at) => this.sendPicture(a, at, m.message_id, pictures),
       };
       const res = await answer({ question: d.question, thread, replyTo, now: Date.now(), boardUrl: this.hub.cfg.publicUrl }, this.chatFactory(key, this.settings.model), tools);
       this.usage.promptTokens += res.usage.promptTokens;
@@ -194,6 +199,8 @@ export class AssistantService {
       console.log(`assistant: answered ${d.fromId} in ${res.rounds} round(s), tools: ${res.toolCalls.map((c) => c.name).join(',') || '-'}`);
       const parts = splitMessage(res.text);
       const nextThread = [...thread, { role: 'user' as const, content: d.question }, { role: 'assistant' as const, content: res.text }].slice(-12);
+      // A reply to one of the pictures continues this conversation too.
+      for (const id of pictures) await this.hub.db.addTelegramMessage({ chatId: tg.chatId, messageId: id, kind: 'answer', at: Date.now(), text: 'picture of the board', thread: nextThread }).catch(() => undefined);
       for (const [i, part] of parts.entries()) {
         const sent = await tg.sendNow(part, { plain: true, replyTo: m.message_id });
         if (!sent.ok) throw new Error(`Telegram: ${sent.error}`);
@@ -210,6 +217,23 @@ export class AssistantService {
       clearInterval(typing);
       this.inFlight--;
     }
+  }
+
+  /** board_image: draw the asked part and send it as a reply to the question. */
+  private async sendPicture(a: Record<string, unknown>, at: number | null, replyTo: number, sent: number[]) {
+    if (sent.length >= MAX_PICTURES) throw new Error(`already sent ${MAX_PICTURES} pictures for this question`);
+    const r = await this.hub.sendBoardImage(selectionFrom(a), {
+      at,
+      theme: a.theme === 'dark' ? 'dark' : 'light',
+      context: a.context === true,
+      asFile: a.file === true ? true : 'auto',
+      caption: typeof a.caption === 'string' ? a.caption.slice(0, 900) : undefined,
+      replyTo,
+      record: false,
+    });
+    if (!r.result.ok) throw new Error(`Telegram did not take the picture: ${r.result.error}`);
+    if (r.result.messageId !== undefined) sent.push(r.result.messageId);
+    return { sent: true, as: r.asFile ? 'file' : 'photo', title: r.image.title, status: r.image.status, at: r.image.at, nodes: r.image.nodes, links: r.image.links };
   }
 
   private readApi(): ReadApi {

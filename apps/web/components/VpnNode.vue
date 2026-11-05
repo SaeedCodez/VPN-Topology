@@ -3,7 +3,7 @@ import { Handle, Position } from '@vue-flow/core'
 import type { NodeState, TopoNode } from '#contract'
 
 const props = defineProps<{
-  data: { spec: TopoNode; state?: NodeState; sparks: Record<string, (number | null)[]>; drift: number; ghost?: boolean }
+  data: { spec: TopoNode; state?: NodeState; sparks: Record<string, (number | null)[]>; drift: number; ghost?: boolean; picked?: boolean }
 }>()
 
 const st = computed(() => props.data.state)
@@ -33,6 +33,7 @@ const statusText = computed(() => {
     :class="[
       st?.impact === 'root' ? 'border-down shadow-[0_0_0_3px_rgb(var(--down)/0.15)]' : st?.impact === 'affected' ? 'border-affected/60' : 'border-line',
       data.ghost ? 'border-dashed opacity-70' : '',
+      data.picked ? 'outline outline-2 outline-offset-4 outline-accent' : '',
     ]"
     :aria-label="`${spec.name}: ${statusText}`"
   >

@@ -1,4 +1,4 @@
-import type { Bundle } from '#contract'
+import type { Bundle } from '../../contract'
 
 export const NODE_W = 252
 export const NODE_H = 150

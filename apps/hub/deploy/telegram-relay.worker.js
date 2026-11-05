@@ -1,10 +1,11 @@
 // Cloudflare Worker: relays the hub's Telegram Bot API calls (the hub's server
 // cannot reach api.telegram.org). Only the methods the hub uses are allowed,
-// so it cannot be used as a general proxy. It stores nothing; the bot token
-// stays in the hub's env (it is part of the request path, as Telegram requires).
+// so it cannot be used as a general proxy (sendPhoto/sendDocument carry the
+// pictures of the board). It stores nothing; the bot token stays in the hub's
+// env (it is part of the request path, as Telegram requires).
 // Deploy: Workers & Pages → Create → Hello World → paste → Deploy, then set
 // TELEGRAM_API_ROOT=https://<worker>.<account>.workers.dev in Coolify.
-const ALLOWED = /^\/bot\d+:[\w-]+\/(sendMessage|getUpdates|sendChatAction)$/;
+const ALLOWED = /^\/bot\d+:[\w-]+\/(sendMessage|sendPhoto|sendDocument|getUpdates|sendChatAction)$/;
 
 export default {
   async fetch(req) {
@@ -14,7 +15,8 @@ export default {
     }
     return fetch('https://api.telegram.org' + pathname, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // JSON for most methods, multipart/form-data (with its boundary) for sendPhoto/sendDocument.
+      headers: { 'content-type': req.headers.get('content-type') || 'application/json' },
       body: req.body,
     });
   },

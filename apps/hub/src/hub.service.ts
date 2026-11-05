@@ -18,6 +18,8 @@ import { NotifyPlanner, OutMessage, esc, tehranTime } from './engine/notify';
 import { SendResult, TelegramSender } from './notify/telegram';
 import { AssistantService } from './assistant/service';
 import { SCENARIOS } from './sim/scenarios';
+import { BoardImage, BoardImages, ImageOptions } from './board/image';
+import { BoardSelection } from './board/select';
 
 const run = promisify(execFile);
 
@@ -56,6 +58,8 @@ export class HubService {
   telegram: TelegramSender | null = null;
   /** Telegram assistant (settings always available; it listens only in live mode). */
   assistant!: AssistantService;
+  /** Pictures of the board (Telegram, API). */
+  readonly images = new BoardImages(this);
   ready = false;
 
   constructor(readonly cfg: Config) {}
@@ -485,6 +489,31 @@ export class HubService {
     const r = await tg.sendNow(`🧪 <b>پیام آزمایشی نقشه VPN</b>\nاتصال هاب به تلگرام برقرار است.\n${esc(by)} · ${tehranTime(Date.now())}`, { onSent: (id) => void this.db.addTelegramMessage({ chatId: tg.chatId, messageId: id, kind: 'test', at: Date.now(), text: 'test message' }).catch(() => undefined) });
     this.pendingEvents.push({ ts: new Date().toISOString(), kind: 'alert', severity: r.ok ? 'info' : 'warning', entityKind: null, entityId: null, title: r.ok ? 'Telegram test message sent' : 'Telegram test message failed', detail: r.error ?? '', data: { state: 'test' } });
     return r;
+  }
+
+  /**
+   * Draw (part of) the board and send it to the alert chat. `asFile` 'auto'
+   * sends a big picture as a file so the labels stay readable. Records the
+   * message (unless record: false, the assistant records its own with the
+   * thread) so a reply to it reaches the assistant with the picture's context.
+   */
+  async sendBoardImage(
+    sel: BoardSelection,
+    o: ImageOptions & { caption?: string; replyTo?: number; asFile?: boolean | 'auto'; by?: string; record?: boolean },
+  ): Promise<{ result: SendResult; image: Omit<BoardImage, 'png' | 'svg'>; asFile: boolean }> {
+    if (!this.telegram) throw new Error(this.telegramStatus().reason ?? 'telegram is off');
+    const tg = this.telegram;
+    const first = await this.images.render(sel, { ...o, quality: o.asFile === true ? 'file' : 'photo' });
+    const asFile = o.asFile === true || (o.asFile === 'auto' && !first.fitsPhoto);
+    const img = asFile && o.asFile !== true ? await this.images.render(sel, { ...o, quality: 'file' }) : first;
+    const status = { ok: '🟢', degraded: '🟠', down: '🔴', unknown: '⚪️' }[img.status];
+    const caption = (o.caption?.trim() || `${status} ${img.title}`) + `\n${tehranTime(Date.parse(img.at))}${o.by ? ` · ${o.by}` : ''}`;
+    const result = await tg.sendImage(img.png, { caption, replyTo: o.replyTo, asFile, filename: `vpn-board-${img.at.slice(0, 16).replace('T', '-').replace(':', '')}.png` });
+    if (result.ok && result.messageId !== undefined && o.record !== false) {
+      await this.db.addTelegramMessage({ chatId: tg.chatId, messageId: result.messageId, kind: 'image', at: Date.parse(img.at), text: `picture of the board: ${img.title} (nodes: ${img.nodes.join(', ')})` }).catch(() => undefined);
+    }
+    const { png: _p, svg: _s, ...meta } = img;
+    return { result, image: meta, asFile };
   }
 
   // ------------------------------------------------------------------ demo
