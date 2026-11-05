@@ -174,9 +174,13 @@ id (a group id starts with `-100`), put both in Coolify, redeploy, then
 The Coolify server cannot reach `api.telegram.org`, so the hub talks to
 Telegram through a small Cloudflare Worker:
 [`apps/hub/deploy/telegram-relay.worker.js`](apps/hub/deploy/telegram-relay.worker.js).
-It forwards only `sendMessage`, `getUpdates` and `sendChatAction` and stores
-nothing. Set `TELEGRAM_API_ROOT` to the Worker URL (its `workers.dev` route
-must be enabled; Cloudflare answers `error code: 1042` otherwise).
+It forwards only `sendMessage`, `getUpdates`, `sendChatAction`,
+`answerCallbackQuery`, `editMessageText` and `editMessageReplyMarkup` (the last
+three for the ops agent's approve buttons) and stores nothing. Set
+`TELEGRAM_API_ROOT` to the Worker URL (its `workers.dev` route must be enabled;
+Cloudflare answers `error code: 1042` otherwise). If you deployed the Worker
+before the ops agent, paste the current file again so the new methods are
+allowed.
 
 ### Telegram assistant (OpenRouter, read-only)
 
@@ -200,6 +204,49 @@ Persian from the same facts as the board.
 - Privacy: questions and the board facts the model looks up (names, IPs,
   users, events) go to OpenRouter and the model's provider. Secrets are not
   part of the board data.
+
+### Ops agent (acts on servers, with your approval)
+
+When ops is enabled, an **approver** in the group can ask the agent to fix
+something ("TLS فرانسه رو چک کن و تمدیدش کن", "کانکشن Mullvad سوئد رو با آلمان
+عوض کن"). The agent investigates read-only, then sends a **plan**; nothing runs
+until the owner taps **Approve**. This relaxes rule 1 of the repo for the hub's
+own agent only (the map observes, and acts solely through plans the owner
+approved); the CLI, the collector agents and anyone editing this repo stay
+read-only.
+
+- **One approval per task, not per command.** You see the steps, the impact and
+  the rollback, and approve once. The hub (not the model) then runs the steps.
+- **Automatic rollback.** Before a step that edits files, the named files are
+  copied aside. After each step the hub waits for a fresh map reading and
+  compares the plan's `verify` ids with the baseline; if anything got worse, or
+  a step failed, it restores the backups and runs the per-step rollbacks in
+  reverse, then stops. `/stop` (or the board's kill switch) halts after the
+  current step.
+- **What it can run.** `ssh_read` runs only commands a classifier calls
+  *read* (looking only); anything that changes state must go in a plan.
+  Destructive commands (`mkfs`, `rm -rf /…`, firewall flush, touching
+  `vpnmap-op`/`authorized_keys`/`sudoers`) are refused even inside an approved
+  plan. It also reads and (in a plan) calls the Remnawave API.
+- **Access.** The hub holds one ed25519 key (private half AES-GCM encrypted
+  with `SESSION_SECRET`, never returned; public half shown on the board). You
+  grant a server by running one line on it (the board and the bot print it); it
+  makes a `vpnmap-op` user with the key pinned to the hub's IP and `NOPASSWD`
+  sudo. Per server: access **on**, **off**, or a **24 h** window; the host key
+  is pinned on first connect and a change is refused. No SSH key = no access;
+  the owner installs it by hand, never the hub.
+- **Settings on the board** (Ops button): kill switch, action model (its own
+  OpenRouter model, reusing the assistant key), approver ids, hub IP, the public
+  key, the server registry (grant/revoke commands, Test, access), and recent
+  tasks with their steps and outcome.
+- **Secrets** read from a server or the panel are never shown to the model or
+  put in a reply: output is redacted, and any secret becomes a placeholder
+  (`«s1»`) that the hub substitutes back only at the moment of running on the
+  server.
+- **Privacy/trust.** Turn on Telegram 2-step for the approver accounts (an
+  approval is, in effect, server access). The agent needs the Worker to allow
+  `answerCallbackQuery`, `editMessageText` (the button flow) — the Worker below
+  is already updated.
 
 ## Rollout runbook (the owner runs these; nothing here is run for you)
 

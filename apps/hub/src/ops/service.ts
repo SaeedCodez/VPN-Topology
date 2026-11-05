@@ -7,7 +7,7 @@ import { open, seal } from '../secretbox';
 import { Vault } from '../redact';
 import { ExecEnv, runPlan, summariseStep } from './executor';
 import { remnawave } from './remnawave';
-import { sshExec } from './ssh';
+import { sshExec as realSshExec, SshExec } from './ssh';
 import { isOpsTool, normalizePlan, OPS_TOOLS, OpsEnv, runOpsTool } from './tools';
 import { applyOpsPatch, grantCommand, opsKeyOpenSsh, opsPrivateKey, OPS_DEFAULTS, OPS_KEY, OpsPatch, publicOpsView, recordHostKey, revokeCommand, serverReachable, serverView, StoredOps } from './settings';
 
@@ -26,7 +26,15 @@ export class OpsService {
   private running: string | null = null;
   private stopFlag = new Set<string>();
 
-  constructor(private readonly hub: HubService) {}
+  constructor(
+    private readonly hub: HubService,
+    private readonly sshExec: SshExec = realSshExec,
+    private readonly fetchFn: typeof fetch = fetch,
+  ) {}
+
+  private rw() {
+    return remnawave(this.hub.cfg, this.fetchFn);
+  }
 
   async init() {
     this.settings = { ...OPS_DEFAULTS, ...((await this.hub.db.getSetting<StoredOps>(OPS_KEY)) ?? {}) };
@@ -58,6 +66,10 @@ export class OpsService {
     return this.settings.approverUserIds.includes(String(userId));
   }
 
+  get approverUserIds(): string[] {
+    return this.settings.approverUserIds;
+  }
+
   /** Halt the running task after its current step (the /stop command or the kill switch). */
   stopCurrent(): string {
     if (!this.running) return 'کاری در حال اجرا نیست.';
@@ -84,8 +96,8 @@ export class OpsService {
     const env: OpsEnv = {
       settings: this.settings,
       privateKey: opsPrivateKey(this.settings, this.hub.cfg.sessionSecret),
-      sshExec,
-      rw: remnawave(this.hub.cfg),
+      sshExec: this.sshExec,
+      rw: this.rw(),
       vault,
       validIds: this.validIds(),
       onHostKey: async (serverId, fp) => {
@@ -177,8 +189,8 @@ export class OpsService {
     const env: ExecEnv = {
       settings: this.settings,
       privateKey: opsPrivateKey(this.settings, this.hub.cfg.sessionSecret),
-      sshExec,
-      rw: remnawave(this.hub.cfg),
+      sshExec: this.sshExec,
+      rw: this.rw(),
       vault,
       verify: (ids) => this.verifyStatuses(ids),
       settle: () => sleep(Math.min((this.hub.cfg.tickMs ?? 15_000) * 2, 90_000)),
@@ -231,7 +243,7 @@ export class OpsService {
     if (!srv) return { ok: false, detail: 'no such server' };
     const key = opsPrivateKey(this.settings, this.hub.cfg.sessionSecret);
     if (!key) return { ok: false, detail: 'no SSH key' };
-    const r = await sshExec({ host: srv.host, port: srv.port, user: srv.user }, key, 'id && sudo -n true && echo OK', { timeoutMs: 20_000, expectHostKey: srv.hostKey });
+    const r = await this.sshExec({ host: srv.host, port: srv.port, user: srv.user }, key, 'id && sudo -n true && echo OK', { timeoutMs: 20_000, expectHostKey: srv.hostKey });
     if (r.hostKeyFp) {
       const hk = recordHostKey(srv, r.hostKeyFp);
       if (!hk.ok) return { ok: false, detail: `host key changed (${r.hostKeyFp})` };

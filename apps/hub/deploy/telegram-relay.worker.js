@@ -4,7 +4,7 @@
 // stays in the hub's env (it is part of the request path, as Telegram requires).
 // Deploy: Workers & Pages → Create → Hello World → paste → Deploy, then set
 // TELEGRAM_API_ROOT=https://<worker>.<account>.workers.dev in Coolify.
-const ALLOWED = /^\/bot\d+:[\w-]+\/(sendMessage|getUpdates|sendChatAction)$/;
+const ALLOWED = /^\/bot\d+:[\w-]+\/(sendMessage|getUpdates|sendChatAction|answerCallbackQuery|editMessageText|editMessageReplyMarkup)$/;
 
 export default {
   async fetch(req) {

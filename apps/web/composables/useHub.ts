@@ -1,4 +1,4 @@
-import type { AssistantModel, AssistantSettingsView, AssistantTestResult, Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario } from '#contract'
+import type { AssistantModel, AssistantSettingsView, AssistantTestResult, Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario, OpsSettingsView, OpsTaskView } from '#contract'
 
 /**
  * Client state of the board. Everything comes from the hub API; the browser
@@ -15,7 +15,7 @@ const conn = ref<'connecting' | 'live' | 'offline'>('connecting')
 const auth = ref<{ checked: boolean; authenticated: boolean; mode?: string }>({ checked: false, authenticated: false })
 const sparks = shallowRef<Record<string, (number | null)[]>>({})
 const selected = ref<{ kind: 'node' | 'link'; id: string } | null>(null)
-const panel = ref<'details' | 'alerts' | 'drift' | 'assistant' | null>(null)
+const panel = ref<'details' | 'alerts' | 'drift' | 'assistant' | 'ops' | null>(null)
 const loadingPast = ref(false)
 const error = ref<string | null>(null)
 let ws: WebSocket | null = null
@@ -192,6 +192,15 @@ const assistant = {
   test: () => api<AssistantTestResult>('/api/assistant/test', { method: 'POST', body: '{}' }),
 }
 
+/** Ops agent: acts on servers through owner-approved plans (SSH key is write-only). */
+const ops = {
+  get: () => api<OpsSettingsView>('/api/ops'),
+  save: (patch: Record<string, unknown>) => api<OpsSettingsView>('/api/ops', { method: 'PUT', body: JSON.stringify(patch) }),
+  grant: (id: string) => api<{ grant: string; revoke: string }>(`/api/ops/servers/${encodeURIComponent(id)}/grant`),
+  testServer: (id: string) => api<{ ok: boolean; detail: string }>(`/api/ops/servers/${encodeURIComponent(id)}/test`, { method: 'POST', body: '{}' }),
+  tasks: () => api<OpsTaskView[]>('/api/ops/tasks'),
+}
+
 export function useHub() {
   const snapshot = computed(() => (at.value !== null ? pastSnapshot.value ?? liveSnapshot.value : liveSnapshot.value))
   return {
@@ -219,5 +228,6 @@ export function useHub() {
     scenarios,
     play,
     assistant,
+    ops,
   }
 }

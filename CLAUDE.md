@@ -7,14 +7,24 @@ shows the same facts on the board (web) and in the `vpnmap` CLI.
 
 ## Rules (read first, always)
 
-1. **The map only observes.** Nothing in this repo — hub, CLI, agent, you — may
-   change, restart or reconfigure a VPN server. Real changes stay with
-   Remnawave, `relay-ctl` and XBridger, and need the owner's approval.
+1. **The map observes; only the hub's ops agent acts, and only with approval.**
+   The CLI, the collector agents and you (editing this repo) never change,
+   restart or reconfigure a VPN server. The one exception is the hub's Telegram
+   ops agent: it may act on a server (SSH as `vpnmap-op`, or the Remnawave API)
+   **only through a plan the owner approved in Telegram**, which the hub — not
+   the model — then runs step by step, rolling back automatically if the map
+   gets worse. A server is reachable only after the owner installs the hub's
+   key on it and turns its access on. Commands the classifier calls read run
+   without approval (looking only); destructive ones are refused outright. All
+   other real changes still stay with Remnawave, `relay-ctl` and XBridger.
 2. **Never print, commit or paste secrets.** No tokens, passwords, keys,
    `privateKey`, `shortIds` or `.env` values in files, commits, PRs or chat.
    Secrets live only in the hub's env vars (Coolify) or on the servers. One
-   exception: the assistant's OpenRouter key, entered on the board, stored
-   encrypted in the hub DB and never returned by any API.
+   exception: the assistant's OpenRouter key and the ops agent's SSH private
+   key, entered or generated on the board, stored encrypted in the hub DB
+   (AES-GCM, derived from `SESSION_SECRET`) and never returned by any API. The
+   ops agent redacts command and API output before it reaches the model, and
+   substitutes secret values back only when running on the server.
    `vpnmap validate` rejects lines that look like secrets.
 3. **Do not install anything on a production server yourself.** Print the exact
    commands (`vpnmap agent install-cmd <node>`, `vpnmap plan`) for the owner.

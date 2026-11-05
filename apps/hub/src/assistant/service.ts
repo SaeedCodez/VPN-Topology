@@ -183,7 +183,9 @@ export class AssistantService {
       void tg.sendNow(this.ops.stopCurrent(), { plain: true, replyTo: m.message_id });
       return;
     }
-    const d = decide(m, { chatId: tg.chatId, botId: tg.botId, allowedUserIds: this.settings.allowedUserIds });
+    // Approvers can use the ops agent even if they are not on the assistant's own allow-list.
+    const allowedUserIds = this.ops.enabled ? [...new Set([...this.settings.allowedUserIds, ...this.ops.approverUserIds])] : this.settings.allowedUserIds;
+    const d = decide(m, { chatId: tg.chatId, botId: tg.botId, allowedUserIds });
     if (!d.answer) {
       if (d.reason === 'not-allowed') {
         this.lastIgnored = { at: new Date().toISOString(), fromId: d.fromId ?? '', fromName: m.from?.first_name ?? m.from?.username ?? '' };
