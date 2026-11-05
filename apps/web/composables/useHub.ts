@@ -1,4 +1,4 @@
-import type { Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario } from '#contract'
+import type { AssistantModel, AssistantSettingsView, AssistantTestResult, Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario } from '#contract'
 
 /**
  * Client state of the board. Everything comes from the hub API; the browser
@@ -15,7 +15,7 @@ const conn = ref<'connecting' | 'live' | 'offline'>('connecting')
 const auth = ref<{ checked: boolean; authenticated: boolean; mode?: string }>({ checked: false, authenticated: false })
 const sparks = shallowRef<Record<string, (number | null)[]>>({})
 const selected = ref<{ kind: 'node' | 'link'; id: string } | null>(null)
-const panel = ref<'details' | 'alerts' | 'drift' | null>(null)
+const panel = ref<'details' | 'alerts' | 'drift' | 'assistant' | null>(null)
 const loadingPast = ref(false)
 const error = ref<string | null>(null)
 let ws: WebSocket | null = null
@@ -183,6 +183,15 @@ function play(id: string) {
   return api('/api/demo/play', { method: 'POST', body: JSON.stringify({ scenario: id }) })
 }
 
+/** Telegram assistant settings (the OpenRouter key is write-only: sent, never read back). */
+const assistant = {
+  get: () => api<AssistantSettingsView>('/api/assistant'),
+  save: (patch: Partial<{ enabled: boolean; model: string; allowedUserIds: string; dailyLimit: number; key: string }>) =>
+    api<AssistantSettingsView>('/api/assistant', { method: 'PUT', body: JSON.stringify(patch) }),
+  models: () => api<AssistantModel[]>('/api/assistant/models'),
+  test: () => api<AssistantTestResult>('/api/assistant/test', { method: 'POST', body: '{}' }),
+}
+
 export function useHub() {
   const snapshot = computed(() => (at.value !== null ? pastSnapshot.value ?? liveSnapshot.value : liveSnapshot.value))
   return {
@@ -209,5 +218,6 @@ export function useHub() {
     metrics,
     scenarios,
     play,
+    assistant,
   }
 }

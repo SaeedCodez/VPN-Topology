@@ -16,6 +16,7 @@ import { LiveCollectors } from './collectors/live';
 import { Simulator } from './sim/simulator';
 import { NotifyPlanner, OutMessage, esc, tehranTime } from './engine/notify';
 import { SendResult, TelegramSender } from './notify/telegram';
+import { AssistantService } from './assistant/service';
 import { SCENARIOS } from './sim/scenarios';
 
 const run = promisify(execFile);
@@ -53,6 +54,8 @@ export class HubService {
   private readonly notifier = new NotifyPlanner();
   /** Set only in live mode with TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID. */
   telegram: TelegramSender | null = null;
+  /** Telegram assistant (settings always available; it listens only in live mode). */
+  assistant!: AssistantService;
   ready = false;
 
   constructor(readonly cfg: Config) {}
@@ -102,6 +105,8 @@ export class HubService {
     } else {
       console.log('telegram: off (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)');
     }
+    this.assistant = new AssistantService(this, this.telegram);
+    await this.assistant.init();
     this.ready = true;
     this.timer = setInterval(() => void this.tick(Date.now()).catch((e) => console.error('tick failed', e)), this.cfg.tickMs);
     await this.tick(Date.now());
@@ -109,6 +114,7 @@ export class HubService {
 
   async stop() {
     if (this.timer) clearInterval(this.timer);
+    this.assistant?.stop();
     this.live?.stop();
     await this.db?.close();
   }
@@ -217,7 +223,11 @@ export class HubService {
         }),
         ...this.notifier.due(now, this.cfg.publicUrl),
       ];
-      for (const m of out) this.telegram.enqueue(m.text);
+      for (const m of out) {
+        const tg = this.telegram;
+        // Remember what each Telegram message was about, so a reply to it can be answered in context.
+        tg.enqueue(m.text, { onSent: (id) => void this.db.addTelegramMessage({ chatId: tg.chatId, messageId: id, kind: m.kind === 'fired' ? 'alert' : 'resolved', alertKey: m.key, at: m.at, text: m.text }).catch((e) => console.error('telegram: cannot record message', e?.message)) });
+      }
     }
     // Rebuild with up-to-date since/incident times.
     const snap = buildSnapshot(this.bundle, obs, { mode: this.cfg.mode, live: true, version: this.version, since: this.since, incidentSince: this.incidentSince, alerts: active });
@@ -456,6 +466,11 @@ export class HubService {
     return until;
   }
 
+  /** Add an event to the log (flushed with the next tick). */
+  addEvent(e: Omit<HubEvent, 'id'>) {
+    this.pendingEvents.push(e);
+  }
+
   // ------------------------------------------------------------------ telegram
 
   telegramStatus() {
@@ -466,7 +481,8 @@ export class HubService {
 
   async telegramTest(by: string): Promise<SendResult> {
     if (!this.telegram) throw new Error(this.telegramStatus().reason ?? 'telegram is off');
-    const r = await this.telegram.sendNow(`🧪 <b>پیام آزمایشی نقشه VPN</b>\nاتصال هاب به تلگرام برقرار است.\n${esc(by)} · ${tehranTime(Date.now())}`);
+    const tg = this.telegram;
+    const r = await tg.sendNow(`🧪 <b>پیام آزمایشی نقشه VPN</b>\nاتصال هاب به تلگرام برقرار است.\n${esc(by)} · ${tehranTime(Date.now())}`, { onSent: (id) => void this.db.addTelegramMessage({ chatId: tg.chatId, messageId: id, kind: 'test', at: Date.now(), text: 'test message' }).catch(() => undefined) });
     this.pendingEvents.push({ ts: new Date().toISOString(), kind: 'alert', severity: r.ok ? 'info' : 'warning', entityKind: null, entityId: null, title: r.ok ? 'Telegram test message sent' : 'Telegram test message failed', detail: r.error ?? '', data: { state: 'test' } });
     return r;
   }

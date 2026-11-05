@@ -68,6 +68,7 @@ const showDemo = ref(false)
         <button class="btn" :aria-expanded="showDemo" @click="showDemo = !showDemo">Replay incident</button>
         <DemoMenu v-if="showDemo" @close="showDemo = false" />
       </div>
+      <button class="btn-ghost" title="Telegram assistant settings" :aria-pressed="panel === 'assistant'" @click="panel = panel === 'assistant' ? null : 'assistant'">Assistant</button>
       <button class="btn-ghost" :title="snapshot?.drift.length ? `${snapshot.drift.length} drift item(s)` : 'No drift'" @click="panel = panel === 'drift' ? null : 'drift'">
         Drift <span class="num rounded-full bg-subtle px-2 text-[12px]">{{ snapshot?.drift.length ?? 0 }}</span>
       </button>

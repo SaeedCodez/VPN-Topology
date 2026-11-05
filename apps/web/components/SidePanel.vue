@@ -83,6 +83,9 @@ const drift = computed(() => snapshot.value?.drift ?? [])
       </div>
     </template>
 
+    <!-- Telegram assistant settings -->
+    <AssistantPanel v-else-if="panel === 'assistant'" @close="close" />
+
     <!-- Drift -->
     <template v-else-if="panel === 'drift'">
       <div class="flex items-center gap-3 border-b border-line px-5 py-4">

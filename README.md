@@ -32,7 +32,7 @@ also available as CLI output (`--json`) for an agent.
 | 1 | CLI: status, get, describe, diagnose, path, why, events, metrics, snapshot, plan, apply, history, rollback, layout pull, docs, agent config/nft/token/install-cmd, silence, login, admin hash-password/totp | done |
 | 1 | Agent: unprivileged collector + root helper with fixed read-only ops, counter-only nft table, install/uninstall, probe mode | done, not yet run on a real server |
 | 1 | Live collectors in the hub: Remnawave API, 3x-ui, HTTP/TCP/TLS probes | written, untested against the real APIs |
-| 2 | Telegram delivery (Persian), dedupe, recovery, maintenance mute: **done**. External heartbeat; `vpnmap discover`; MCP server | next |
+| 2 | Telegram delivery (Persian), dedupe, recovery, maintenance mute; read-only Telegram assistant (OpenRouter): **done**. External heartbeat; `vpnmap discover`; MCP server | next |
 | 3 | Operational buttons with confirmation and audit log | later |
 
 ## Repository
@@ -147,7 +147,7 @@ serves `/agent/install.sh`, `/agent/uninstall.sh` and the agent binaries
 | `XUI_FRANCE_URL`, `XUI_FRANCE_USER`, `XUI_FRANCE_PASS` | 3x-ui on the France exit (inbound list only) |
 | `PROBE_TOKEN`, `PROBE_OUTBOUND_MAIN`, `PROBE_OUTBOUND_MULLVAD_DE/US/TR`, `PROBE_SUBSCRIPTION_ID` | probe container: push token, and the monitoring user's sing-box outbounds and shortUuid |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram alerts (live mode only). Empty → off. `vpnmap telegram status` / `vpnmap telegram test` |
-| `TELEGRAM_API_ROOT` | optional; empty = `https://api.telegram.org` (the Coolify host has open internet). A proxy URL only if that changes |
+| `TELEGRAM_API_ROOT` | the Cloudflare Worker relay URL (see below); empty = `https://api.telegram.org` |
 | `TOPOLOGY_ROOT`, `VPNMAP_BIN`, `AGENT_DIST_DIR` | set in the image |
 | `NPM_REGISTRY`, `ALPINE_MIRROR`, `GOPROXY` | build mirrors |
 
@@ -168,6 +168,38 @@ to one chat when it fires, and again when it recovers:
 Setup: create a bot with @BotFather, add it to the alert group, get the chat
 id (a group id starts with `-100`), put both in Coolify, redeploy, then
 `vpnmap telegram test`.
+
+### Telegram relay (Cloudflare Worker)
+
+The Coolify server cannot reach `api.telegram.org`, so the hub talks to
+Telegram through a small Cloudflare Worker:
+[`apps/hub/deploy/telegram-relay.worker.js`](apps/hub/deploy/telegram-relay.worker.js).
+It forwards only `sendMessage`, `getUpdates` and `sendChatAction` and stores
+nothing. Set `TELEGRAM_API_ROOT` to the Worker URL (its `workers.dev` route
+must be enabled; Cloudflare answers `error code: 1042` otherwise).
+
+### Telegram assistant (OpenRouter, read-only)
+
+In the alert group, reply to any bot message (an alert, a recovery, an
+earlier answer) or write `/ask <question>`; an OpenRouter model answers in
+Persian from the same facts as the board.
+
+- **Read-only by construction**: its only tools are `list_entities`, `status`,
+  `diagnose`, `describe`, `why`, `path`, `events`, `metrics` (each with `at`).
+  A reply to an alert looks at the moment of that alert; a reply to an answer
+  continues the conversation.
+- **Settings on the board** (Assistant button): on/off, OpenRouter key, model,
+  allowed Telegram user ids, questions per day, a Test button, today's usage
+  and cost. Changes apply at once, no redeploy. The key is stored AES-GCM
+  encrypted (derived from `SESSION_SECRET`) and never returned; if
+  `SESSION_SECRET` changes it has to be entered again.
+- Only allowed user ids get answers; other messages in the group are not read.
+  The panel shows the id of the last ignored asker, to find your own.
+- Runs only in live mode, with Telegram configured; the hub long-polls
+  `getUpdates` (so the bot must have no webhook).
+- Privacy: questions and the board facts the model looks up (names, IPs,
+  users, events) go to OpenRouter and the model's provider. Secrets are not
+  part of the board data.
 
 ## Rollout runbook (the owner runs these; nothing here is run for you)
 

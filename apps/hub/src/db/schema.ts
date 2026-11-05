@@ -1,6 +1,6 @@
-import { bigserial, boolean, doublePrecision, integer, jsonb, pgTable, serial, text, timestamp, index } from 'drizzle-orm/pg-core';
+import { bigint, bigserial, boolean, doublePrecision, integer, jsonb, pgTable, serial, text, timestamp, index } from 'drizzle-orm/pg-core';
 
-/** Postgres schema (Drizzle). Topology versions, events, layout, silences. */
+/** Postgres schema (Drizzle). Topology versions, events, layout, silences, settings, Telegram messages. */
 
 export const topologyVersions = pgTable('topology_versions', {
   version: serial('version').primaryKey(),
@@ -45,6 +45,24 @@ export const silences = pgTable('silences', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Hub settings edited from the board (assistant). Secrets in here are encrypted (see assistant/settings.ts). */
+export const settings = pgTable('settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Messages the hub sent to Telegram, so a reply knows which alert or answer it refers to. */
+export const telegramMessages = pgTable('telegram_messages', {
+  chatId: text('chat_id').notNull(),
+  messageId: bigint('message_id', { mode: 'number' }).notNull(),
+  kind: text('kind').notNull(), // alert | resolved | answer | test
+  alertKey: text('alert_key'),
+  at: timestamp('at', { withTimezone: true }).notNull(),
+  text: text('text').notNull().default(''),
+  thread: jsonb('thread'),
+});
+
 export const schemaVersion = pgTable('schema_version', {
   version: integer('version').primaryKey(),
 });
@@ -84,4 +102,17 @@ export const MIGRATIONS: string[] = [
      until timestamptz NOT NULL,
      reason text NOT NULL DEFAULT '',
      created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS settings (
+     key text PRIMARY KEY,
+     value jsonb NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS telegram_messages (
+     chat_id text NOT NULL,
+     message_id bigint NOT NULL,
+     kind text NOT NULL,
+     alert_key text,
+     at timestamptz NOT NULL,
+     text text NOT NULL DEFAULT '',
+     thread jsonb,
+     PRIMARY KEY (chat_id, message_id))`,
 ];
