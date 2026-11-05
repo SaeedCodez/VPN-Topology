@@ -14,6 +14,8 @@ import { MemoryTSDB, STEP_MS, TSDB, VictoriaMetricsTSDB, fromSeries, toSeries } 
 import { validateBundle } from './engine/validate';
 import { LiveCollectors } from './collectors/live';
 import { Simulator } from './sim/simulator';
+import { NotifyPlanner, OutMessage, esc, tehranTime } from './engine/notify';
+import { SendResult, TelegramSender } from './notify/telegram';
 import { SCENARIOS } from './sim/scenarios';
 
 const run = promisify(execFile);
@@ -48,6 +50,9 @@ export class HubService {
   private activeAlerts: ActiveAlert[] = [];
   private lastLogScan = new Map<string, number>();
   private backfilling = false;
+  private readonly notifier = new NotifyPlanner();
+  /** Set only in live mode with TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID. */
+  telegram: TelegramSender | null = null;
   ready = false;
 
   constructor(readonly cfg: Config) {}
@@ -83,6 +88,19 @@ export class HubService {
     } else {
       this.live = new LiveCollectors(this.cfg, this.store, () => this.bundle);
       this.live.start();
+    }
+    if (this.cfg.telegram && this.cfg.mode === 'live') {
+      this.telegram = new TelegramSender(this.cfg.telegram);
+      // Alerts still firing when the hub stopped fire again after a restart;
+      // don't announce them twice.
+      const now = Date.now();
+      const firing = await this.db.alertsActiveAt(new Date(now)).catch(() => []);
+      this.notifier.carryOver(firing.filter((e) => e.entityId).map((e) => ({ key: e.entityId!, since: Date.parse(e.ts) })), now);
+      console.log(`telegram: alerts on (${new URL(this.cfg.telegram.apiRoot).host}, ${firing.length} alert(s) already firing)`);
+    } else if (this.cfg.telegram) {
+      console.log('telegram: configured, but nothing is sent in demo mode');
+    } else {
+      console.log('telegram: off (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)');
     }
     this.ready = true;
     this.timer = setInterval(() => void this.tick(Date.now()).catch((e) => console.error('tick failed', e)), this.cfg.tickMs);
@@ -189,6 +207,17 @@ export class HubService {
         detail: msg(t.alert.message_fa),
         data: { state: t.fired ? 'firing' : 'resolved', alertId: t.alert.id, instance: t.instance.key, severity: t.alert.severity, title: t.alert.title, messageFa: msg(t.alert.message_fa) },
       });
+    }
+    if (this.telegram && !this.backfilling) {
+      const out: OutMessage[] = [
+        ...this.notifier.onTransitions(transitions, {
+          boardUrl: this.cfg.publicUrl,
+          silencedUntil: (id, inst) => Math.max(this.alerts.silences.get(id) ?? 0, this.alerts.silences.get(`${id}|${inst}`) ?? 0),
+          rootCauses: draft.overall.rootCauses,
+        }),
+        ...this.notifier.due(now, this.cfg.publicUrl),
+      ];
+      for (const m of out) this.telegram.enqueue(m.text);
     }
     // Rebuild with up-to-date since/incident times.
     const snap = buildSnapshot(this.bundle, obs, { mode: this.cfg.mode, live: true, version: this.version, since: this.since, incidentSince: this.incidentSince, alerts: active });
@@ -425,6 +454,21 @@ export class HubService {
     await this.db.addSilence(alertId, instance, new Date(until), reason);
     this.pendingEvents.push({ ts: new Date().toISOString(), kind: 'alert', severity: 'info', entityKind: 'alert', entityId: `${alertId}|${instance}`, title: `Silenced ${alertId}${instance ? ' (' + instance + ')' : ''} until ${new Date(until).toISOString()}`, detail: reason, data: { state: 'silenced' } });
     return until;
+  }
+
+  // ------------------------------------------------------------------ telegram
+
+  telegramStatus() {
+    if (!this.cfg.telegram) return { enabled: false, reason: 'TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set' };
+    if (!this.telegram) return { enabled: false, reason: 'demo mode' };
+    return { enabled: true, apiHost: new URL(this.cfg.telegram.apiRoot).host, sent: this.telegram.sent, pending: this.telegram.pending, lastError: this.telegram.lastError };
+  }
+
+  async telegramTest(by: string): Promise<SendResult> {
+    if (!this.telegram) throw new Error(this.telegramStatus().reason ?? 'telegram is off');
+    const r = await this.telegram.sendNow(`🧪 <b>پیام آزمایشی نقشه VPN</b>\nاتصال هاب به تلگرام برقرار است.\n${esc(by)} · ${tehranTime(Date.now())}`);
+    this.pendingEvents.push({ ts: new Date().toISOString(), kind: 'alert', severity: r.ok ? 'info' : 'warning', entityKind: null, entityId: null, title: r.ok ? 'Telegram test message sent' : 'Telegram test message failed', detail: r.error ?? '', data: { state: 'test' } });
+    return r;
   }
 
   // ------------------------------------------------------------------ demo

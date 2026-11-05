@@ -48,7 +48,7 @@ export class ApiController {
   @Public()
   @Get('health')
   health() {
-    return { ok: this.hub.ready, mode: this.hub.cfg.mode, topologyVersion: this.hub.version, tsdb: this.hub.tsdb?.name, db: this.hub.db?.driver };
+    return { ok: this.hub.ready, mode: this.hub.cfg.mode, topologyVersion: this.hub.version, tsdb: this.hub.tsdb?.name, db: this.hub.db?.driver, telegram: this.hub.telegram ? 'on' : 'off' };
   }
 
   @Public()
@@ -310,6 +310,23 @@ export class ApiController {
     try {
       const until = await this.hub.silence(body.alert, body.instance ?? '', parseDuration(body.duration, 3_600_000), body.reason ?? '');
       return { alert: body.alert, until: new Date(until).toISOString() };
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  // ------------------------------------------------------------- telegram
+
+  @Get('telegram')
+  telegram() {
+    return this.hub.telegramStatus();
+  }
+
+  /** `vpnmap telegram test`: one test message to the alert chat. */
+  @Post('telegram/test')
+  async telegramTest(@Body() body: { by?: string }) {
+    try {
+      return await this.hub.telegramTest(String(body?.by ?? 'cli').slice(0, 64));
     } catch (e: any) {
       throw new BadRequestException(e.message);
     }

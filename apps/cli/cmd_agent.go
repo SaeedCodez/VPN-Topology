@@ -423,3 +423,84 @@ func cmdSilence() *cobra.Command {
 	c.Flags().StringVar(&reason, "reason", "", "why (recorded in the event log)")
 	return c
 }
+
+// ------------------------------------------------------------------ telegram
+
+func cmdTelegram() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "telegram",
+		Short: "Telegram alert delivery: status, or send a test message",
+	}
+	type status struct {
+		Enabled   bool   `json:"enabled"`
+		Reason    string `json:"reason"`
+		APIHost   string `json:"apiHost"`
+		Sent      int    `json:"sent"`
+		Pending   int    `json:"pending"`
+		LastError *struct {
+			At    string `json:"at"`
+			Error string `json:"error"`
+		} `json:"lastError"`
+	}
+	c.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Is Telegram on, how many messages went out, last error",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			var s status
+			raw, err := cl.get("/api/telegram", nil, &s)
+			if err != nil {
+				return err
+			}
+			if g.JSON {
+				return emitRaw(raw)
+			}
+			if !s.Enabled {
+				fmt.Printf("%s telegram is off: %s\n", red("✗"), s.Reason)
+				return exitWith(ExitDegraded, "")
+			}
+			fmt.Printf("%s telegram on via %s · %d sent · %d queued\n", green("✓"), bold(s.APIHost), s.Sent, s.Pending)
+			if s.LastError != nil {
+				fmt.Printf("  last error %s: %s\n", localTime(s.LastError.At), s.LastError.Error)
+			}
+			return nil
+		},
+	})
+	c.AddCommand(&cobra.Command{
+		Use:   "test",
+		Short: "Send one test message to the alert chat",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := noAt("telegram test"); err != nil {
+				return err
+			}
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			root, _ := repoRoot()
+			var r struct {
+				OK    bool   `json:"ok"`
+				Error string `json:"error"`
+			}
+			raw, err := cl.post("/api/telegram/test", map[string]any{"by": whoAmI(root)}, &r)
+			if err != nil {
+				return err
+			}
+			if g.JSON {
+				return emitRaw(raw)
+			}
+			if !r.OK {
+				fmt.Printf("%s Telegram refused the message: %s\n", red("✗"), r.Error)
+				return exitWith(ExitDown, "")
+			}
+			fmt.Printf("%s test message sent\n", green("✓"))
+			return nil
+		},
+	})
+	return c
+}

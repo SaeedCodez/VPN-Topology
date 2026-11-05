@@ -77,7 +77,9 @@ export function loadConfig(env = process.env): Config {
     rwApiUrl: env.RW_API_URL,
     rwApiToken: env.RW_API_TOKEN,
     xui,
-    telegram: env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID ? { apiRoot: env.TELEGRAM_API_ROOT ?? 'https://api.telegram.org', token: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID } : undefined,
+    // Compose passes unset variables as "", so an empty TELEGRAM_API_ROOT means
+    // the default (direct to api.telegram.org; the hub has open internet).
+    telegram: env.TELEGRAM_BOT_TOKEN?.trim() && env.TELEGRAM_CHAT_ID?.trim() ? { apiRoot: env.TELEGRAM_API_ROOT?.trim() || 'https://api.telegram.org', token: env.TELEGRAM_BOT_TOKEN.trim(), chatId: env.TELEGRAM_CHAT_ID.trim() } : undefined,
     demoBackfillHours: Number(env.DEMO_BACKFILL_HOURS ?? 25),
     tickMs: Number(env.TICK_MS ?? 5000),
     webOrigin: env.WEB_ORIGIN,
