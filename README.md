@@ -32,7 +32,7 @@ also available as CLI output (`--json`) for an agent.
 | 1 | CLI: status, get, describe, diagnose, path, why, events, metrics, snapshot, plan, apply, history, rollback, layout pull, docs, agent config/nft/token/install-cmd, silence, login, admin hash-password/totp | done |
 | 1 | Agent: unprivileged collector + root helper with fixed read-only ops, counter-only nft table, install/uninstall, probe mode | done, not yet run on a real server |
 | 1 | Live collectors in the hub: Remnawave API, 3x-ui, HTTP/TCP/TLS probes | written, untested against the real APIs |
-| 2 | Telegram delivery (Persian), dedupe, recovery, maintenance mute, external heartbeat; `vpnmap discover`; MCP server | next (alert rules are already evaluated and shown) |
+| 2 | Telegram delivery (Persian), dedupe, recovery, maintenance mute: **done**. External heartbeat; `vpnmap discover`; MCP server | next |
 | 3 | Operational buttons with confirmation and audit log | later |
 
 ## Repository
@@ -146,9 +146,28 @@ serves `/agent/install.sh`, `/agent/uninstall.sh` and the agent binaries
 | `RW_API_URL`, `RW_API_TOKEN` | Remnawave API, dedicated monitoring user |
 | `XUI_FRANCE_URL`, `XUI_FRANCE_USER`, `XUI_FRANCE_PASS` | 3x-ui on the France exit (inbound list only) |
 | `PROBE_TOKEN`, `PROBE_OUTBOUND_MAIN`, `PROBE_OUTBOUND_MULLVAD_DE/US/TR`, `PROBE_SUBSCRIPTION_ID` | probe container: push token, and the monitoring user's sing-box outbounds and shortUuid |
-| `TELEGRAM_API_ROOT`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | alerts via the Cloudflare Workers proxy (phase 2) |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram alerts (live mode only). Empty → off. `vpnmap telegram status` / `vpnmap telegram test` |
+| `TELEGRAM_API_ROOT` | optional; empty = `https://api.telegram.org` (the Coolify host has open internet). A proxy URL only if that changes |
 | `TOPOLOGY_ROOT`, `VPNMAP_BIN`, `AGENT_DIST_DIR` | set in the image |
 | `NPM_REGISTRY`, `ALPINE_MIRROR`, `GOPROXY` | build mirrors |
+
+### Telegram alerts
+
+Every alert rule in the component files (`alerts:` with `message_fa`) is sent
+to one chat when it fires, and again when it recovers:
+
+- 🔴 critical / 🟠 warning, the Persian message, the board's root cause (critical
+  only), the alert id + instance, Tehran time (Jalali) and a link to the board.
+- ✅ «برطرف شد» with how long it lasted, sent 2 minutes after recovery; if it
+  fires again inside those 2 minutes (flapping) nothing more is sent.
+- Silenced alerts (`vpnmap silence <alert> 2h`) are not sent, nor their recovery.
+- After a hub restart, alerts that were already firing are not announced again.
+- Failed sends are retried with backoff (and Telegram's `retry_after`); the
+  token never appears in logs or API answers.
+
+Setup: create a bot with @BotFather, add it to the alert group, get the chat
+id (a group id starts with `-100`), put both in Coolify, redeploy, then
+`vpnmap telegram test`.
 
 ## Rollout runbook (the owner runs these; nothing here is run for you)
 
