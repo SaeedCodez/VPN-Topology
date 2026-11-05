@@ -14,9 +14,9 @@ import (
 	"vpnmap/apps/agent/internal/helper"
 	"vpnmap/apps/agent/internal/procfs"
 	"vpnmap/apps/agent/internal/push"
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/apps/agent/internal/tail"
 	"vpnmap/pkg/agentcfg"
+	"vpnmap/pkg/sysexec"
 )
 
 func cmdRun(args []string, stdout, stderr io.Writer) int {

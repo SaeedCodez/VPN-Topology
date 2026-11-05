@@ -1,0 +1,17 @@
+#!/bin/bash
+# vpnmap-ops action script: mullvad-status (read)
+#
+# Prints `mullvad-ns status [cc]` (cc = two letters or all).
+#
+# Installed root-owned (0755) in /etc/vpnmap-ops/actions.d/mullvad-status by the owner;
+# declared in the node's ops.scripts in the topology. The runner calls it with
+# --<param> <value> only, values already validated against the declared
+# enum/pattern; the script checks them again and runs fixed commands only.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # root-owned dirs only
+die() { echo "error: $*" >&2; exit 2; }
+[ "$#" -eq 2 ] && [ "$1" = --cc ] || die "usage: --cc <cc|all>"
+cc=$2
+[[ $cc =~ ^([a-z]{2}|all)$ ]] || die "bad cc"
+if [ "$cc" = all ]; then exec mullvad-ns status; fi
+exec mullvad-ns status "$cc"

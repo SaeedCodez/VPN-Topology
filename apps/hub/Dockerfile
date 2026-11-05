@@ -1,6 +1,7 @@
 # VPN Topology hub image (build context: repository root).
 # Contains: the hub (NestJS), the vpnmap binary (it parses the topology files
-# at bootstrap) and the agent binaries + install scripts served at /agent/.
+# at bootstrap), the agent and ops-runner binaries + install scripts and
+# example ops action scripts served at /agent/.
 # Iranian mirrors can be passed as build args, like the XBridger images.
 ARG NODE_IMAGE=node:22-alpine
 ARG GO_IMAGE=golang:1.24-alpine
@@ -15,6 +16,7 @@ RUN go mod download
 COPY pkg ./pkg
 COPY apps/cli ./apps/cli
 COPY apps/agent ./apps/agent
+COPY apps/ops-runner ./apps/ops-runner
 RUN go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/vpnmap ./apps/cli \
  && mkdir -p /out/agent \
  && for arch in amd64 arm64; do \
@@ -22,7 +24,16 @@ RUN go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/vpnma
       (cd /out/agent && sha256sum vpnmap-agent-linux-$arch | cut -d' ' -f1 > vpnmap-agent-linux-$arch.sha256); \
     done \
  && cp apps/agent/deploy/install.sh apps/agent/deploy/uninstall.sh /out/agent/ \
- && mkdir -p /out/agent/checks && cp apps/agent/deploy/checks.d/*.check /out/agent/checks/
+ && mkdir -p /out/agent/checks && cp apps/agent/deploy/checks.d/*.check /out/agent/checks/ \
+ && for arch in amd64 arm64; do \
+      GOOS=linux GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/agent/vpnmap-ops-linux-$arch ./apps/ops-runner; \
+      (cd /out/agent && sha256sum vpnmap-ops-linux-$arch | cut -d' ' -f1 > vpnmap-ops-linux-$arch.sha256); \
+    done \
+ && cp apps/ops-runner/deploy/install.sh /out/agent/ops-install.sh && cp apps/ops-runner/deploy/uninstall.sh /out/agent/ops-uninstall.sh \
+ && for f in apps/ops-runner/deploy/actions.d/*; do \
+      id=$(basename "$f"); cp "$f" /out/agent/ops-action-$id; \
+      (cd /out/agent && sha256sum ops-action-$id | cut -d' ' -f1 > ops-action-$id.sha256); \
+    done
 
 FROM ${NODE_IMAGE} AS build
 ARG NPM_REGISTRY=https://registry.npmjs.org

@@ -1,0 +1,23 @@
+#!/bin/bash
+# vpnmap-ops action script: mullvad-exit-check (read)
+#
+# Fetches https://am.i.mullvad.net/json through the country's local SOCKS
+# port (from mullvad-proxy-<cc>.socket) and prints only ip, country and the
+# Mullvad exit fields. A fresh handshake alone does not prove the tunnel
+# carries traffic (2026-11-04).
+#
+# Installed root-owned (0755) in /etc/vpnmap-ops/actions.d/mullvad-exit-check by the owner;
+# declared in the node's ops.scripts in the topology. The runner calls it with
+# --<param> <value> only, values already validated against the declared
+# enum/pattern; the script checks them again and runs fixed commands only.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # root-owned dirs only
+die() { echo "error: $*" >&2; exit 2; }
+[ "$#" -eq 2 ] && [ "$1" = --cc ] || die "usage: --cc <cc>"
+cc=$2
+[[ $cc =~ ^[a-z]{2}$ ]] || die "bad cc"
+listen=$(systemctl show "mullvad-proxy-$cc.socket" -p Listen --value | awk '{print $1}')
+port=${listen##*:}
+[[ $port =~ ^[0-9]{2,5}$ ]] || die "no SOCKS port for $cc (mullvad-proxy-$cc.socket)"
+curl -sS -m 12 --socks5-hostname "127.0.0.1:$port" https://am.i.mullvad.net/json |
+  python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({k: d.get(k) for k in ("ip","country","city","mullvad_exit_ip","mullvad_exit_ip_hostname")}))'

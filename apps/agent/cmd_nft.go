@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/agentcfg"
+	"vpnmap/pkg/sysexec"
 )
 
 func cmdRenderNft(args []string, stdout, stderr io.Writer) int {

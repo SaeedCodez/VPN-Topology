@@ -1,0 +1,18 @@
+#!/bin/bash
+# vpnmap-ops action script: xbridger-conn-start (change)
+#
+# Runs `xbridger conn start <id>` in the node container (never --reveal).
+#
+# Installed root-owned (0755) in /etc/vpnmap-ops/actions.d/xbridger-conn-start by the owner;
+# declared in the node's ops.scripts in the topology. The runner calls it with
+# --<param> <value> only, values already validated against the declared
+# enum/pattern; the script checks them again and runs fixed commands only.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # root-owned dirs only
+die() { echo "error: $*" >&2; exit 2; }
+CONTAINER=backend-app-1   # the XBridger node container on this server
+[ "$#" -eq 2 ] && [ "$1" = --conn ] || die "usage: --conn <id>"
+conn=$2
+[[ $conn =~ ^[a-z0-9]{6,32}$ ]] || die "bad connection id"
+docker exec "$CONTAINER" xbridger conn start "$conn"
+docker exec "$CONTAINER" xbridger conn show "$conn" --json

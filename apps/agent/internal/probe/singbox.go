@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/redact"
+	"vpnmap/pkg/sysexec"
 )
 
 // Process is one supervised `sing-box run` child.

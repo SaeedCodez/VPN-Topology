@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // nftCounters lists the named counters of table inet vpnmap. Only that table

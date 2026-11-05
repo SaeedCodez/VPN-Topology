@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 const (

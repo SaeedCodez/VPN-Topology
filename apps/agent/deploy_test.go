@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"vpnmap/apps/agent/internal/helper"
-	"vpnmap/apps/agent/internal/sysexec"
+	"vpnmap/pkg/sysexec"
 )
 
 func readDeploy(t *testing.T, name string) string {

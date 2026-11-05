@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/agentcfg"
 	"vpnmap/pkg/protocol"
 	"vpnmap/pkg/redact"
+	"vpnmap/pkg/sysexec"
 )
 
 // checkEnv is the complete environment of a local check.

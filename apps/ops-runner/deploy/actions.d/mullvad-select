@@ -1,0 +1,21 @@
+#!/bin/bash
+# vpnmap-ops action script: mullvad-select (change)
+#
+# Switches one country's tunnel to a relay: `mullvad-ns select <cc> <relay>`.
+# It recreates the namespace (for de it also re-applies game-gw). Rollback:
+# the hub runs it again with the relay mullvad-current printed before.
+#
+# Installed root-owned (0755) in /etc/vpnmap-ops/actions.d/mullvad-select by the owner;
+# declared in the node's ops.scripts in the topology. The runner calls it with
+# --<param> <value> only, values already validated against the declared
+# enum/pattern; the script checks them again and runs fixed commands only.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # root-owned dirs only
+die() { echo "error: $*" >&2; exit 2; }
+[ "$#" -eq 4 ] && [ "$1" = --cc ] && [ "$3" = --relay ] || die "usage: --cc <cc> --relay <relay>"
+cc=$2 relay=$4
+[[ $cc =~ ^[a-z]{2}$ ]] || die "bad cc"
+[[ $relay =~ ^[a-z]{2}-[a-z]{3}-wg-[0-9]{3}$ ]] || die "bad relay"
+[ "${relay:0:2}" = "$cc" ] || die "relay $relay is not in country $cc"
+mullvad-ns select "$cc" "$relay"
+mullvad-ns status "$cc"

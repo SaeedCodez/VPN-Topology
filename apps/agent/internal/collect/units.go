@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // unitProps are read with `systemctl show`. The monotonic timestamp is used

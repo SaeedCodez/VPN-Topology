@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"testing"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/agentcfg"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // TestMain lets the test binary act as vpnmap-agent for the installer

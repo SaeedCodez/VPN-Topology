@@ -20,10 +20,10 @@ import (
 	"vpnmap/apps/agent/internal/probe"
 	"vpnmap/apps/agent/internal/procfs"
 	"vpnmap/apps/agent/internal/push"
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/apps/agent/internal/tail"
 	"vpnmap/pkg/agentcfg"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // MaxBackoff caps the wait between failed pushes.

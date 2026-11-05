@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"vpnmap/apps/agent/internal/sysexec"
 	"vpnmap/pkg/protocol"
+	"vpnmap/pkg/sysexec"
 )
 
 // keyPrefix is how many characters of a public key are kept: enough to tell
