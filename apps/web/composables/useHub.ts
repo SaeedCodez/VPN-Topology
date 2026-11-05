@@ -1,4 +1,4 @@
-import type { AssistantModel, AssistantSettingsView, AssistantTestResult, Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario } from '#contract'
+import type { AssistantModel, AssistantSettingsView, AssistantTestResult, Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario, OpsSettingsView, OpsTaskView } from '#contract'
 
 /**
  * Client state of the board. Everything comes from the hub API; the browser
@@ -15,7 +15,7 @@ const conn = ref<'connecting' | 'live' | 'offline'>('connecting')
 const auth = ref<{ checked: boolean; authenticated: boolean; mode?: string }>({ checked: false, authenticated: false })
 const sparks = shallowRef<Record<string, (number | null)[]>>({})
 const selected = ref<{ kind: 'node' | 'link'; id: string } | null>(null)
-const panel = ref<'details' | 'alerts' | 'drift' | 'assistant' | null>(null)
+const panel = ref<'details' | 'alerts' | 'drift' | 'assistant' | 'ops' | null>(null)
 const loadingPast = ref(false)
 const error = ref<string | null>(null)
 let ws: WebSocket | null = null
@@ -184,6 +184,23 @@ function play(id: string) {
 }
 
 /** Telegram assistant settings (the OpenRouter key is write-only: sent, never read back). */
+/** Ops actions: closed catalog, owner-approved plans. The SSH private key is never returned. */
+export interface OpsGrant {
+  config: string
+  install: string
+  fingerprint: string
+  check: string
+  uninstall: string
+  missing: string[]
+}
+const ops = {
+  get: () => api<OpsSettingsView>('/api/ops'),
+  save: (patch: Record<string, unknown>) => api<OpsSettingsView>('/api/ops', { method: 'PUT', body: JSON.stringify(patch) }),
+  grant: (node: string) => api<OpsGrant>(`/api/ops/servers/${encodeURIComponent(node)}/grant`),
+  testServer: (node: string) => api<{ ok: boolean; detail: string }>(`/api/ops/servers/${encodeURIComponent(node)}/test`, { method: 'POST', body: '{}' }),
+  tasks: () => api<OpsTaskView[]>('/api/ops/tasks'),
+}
+
 const assistant = {
   get: () => api<AssistantSettingsView>('/api/assistant'),
   save: (patch: Partial<{ enabled: boolean; model: string; allowedUserIds: string; dailyLimit: number; key: string }>) =>
@@ -245,6 +262,7 @@ export function useHub() {
     scenarios,
     play,
     assistant,
+    ops,
     board,
   }
 }
