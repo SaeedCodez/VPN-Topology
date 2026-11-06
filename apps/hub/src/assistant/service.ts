@@ -1,9 +1,10 @@
-import { AssistantModel, AssistantSettingsView, AssistantTestResult } from '../contract';
+import { AssistantDocsTestResult, AssistantModel, AssistantSettingsView, AssistantTestResult } from '../contract';
 import { HubService } from '../hub.service';
 import { TelegramSender } from '../notify/telegram';
 import { OpsService } from '../ops/service';
 import { parseAt, parseDuration, Queries } from '../queries';
 import { answer, OpsRuntime, splitMessage } from './agent';
+import { DocsApi, NotionDocs, pageId } from './notion';
 import { ChatFn, listModels, openRouterChat } from './openrouter';
 import { AssistantPatch, applyPatch, decrypt, DEFAULTS, publicView, SETTINGS_KEY, StoredAssistant } from './settings';
 import { ReadApi, ToolContext } from './tools';
@@ -21,7 +22,8 @@ const STALE_MS = 10 * 60_000;
  * (through TELEGRAM_API_ROOT, i.e. the Cloudflare Worker), and one agent run
  * per question. Polling runs only in live mode, with Telegram configured and
  * the assistant enabled with a key and a model. It only reads (see tools.ts);
- * board_image sends a picture of the board to the same chat.
+ * board_image sends a picture of the board to the same chat, and with
+ * NOTION_TOKEN it can read the project's Notion pages (notion.ts, GET only).
  */
 export class AssistantService {
   private settings: StoredAssistant = { ...DEFAULTS };
@@ -36,6 +38,8 @@ export class AssistantService {
   private lastError: { at: string; error: string } | null = null;
   private lastIgnored: { at: string; fromId: string; fromName: string } | null = null;
   private modelsCache: { at: number; list: AssistantModel[] } | null = null;
+  /** Notion docs, read-only; null when NOTION_TOKEN is not set. */
+  private readonly docs: DocsApi | null;
 
   constructor(
     private readonly hub: HubService,
@@ -45,6 +49,13 @@ export class AssistantService {
     private readonly fetchFn: typeof fetch = fetch,
   ) {
     this.queries = new Queries(hub);
+    const notion = hub.cfg.notion;
+    this.docs = notion ? new NotionDocs({ token: notion.token, rootId: () => this.docsRoot(), fetchFn }) : null;
+  }
+
+  /** NOTION_ROOT_PAGE, else the `docs:` link of map.yaml (the VPN Infrastructure page). */
+  private docsRoot(): string | null {
+    return pageId(this.hub.cfg.notion?.rootPage) ?? pageId(this.hub.bundle?.map?.docs);
   }
 
   async init() {
@@ -74,7 +85,22 @@ export class AssistantService {
       usage: { ...this.usage, costUsd: Math.round(this.usage.costUsd * 10000) / 10000 },
       lastError: this.lastError,
       lastIgnored: this.lastIgnored,
+      docs: this.docsView(),
     };
+  }
+
+  private docsView(): AssistantSettingsView['docs'] {
+    if (!this.docs) return { enabled: false, reason: 'NOTION_TOKEN is not set' };
+    const root = this.docsRoot();
+    if (!root) return { enabled: false, reason: 'no root page: set NOTION_ROOT_PAGE or docs: in map.yaml' };
+    return { enabled: true, root };
+  }
+
+  /** Reads the root page once, to check the token and the page connection. */
+  async docsTest(): Promise<AssistantDocsTestResult> {
+    const v = this.docsView();
+    if (!this.docs || !v.enabled) return { ok: false, ms: 0, error: v.reason };
+    return this.docs.check();
   }
 
   async update(p: AssistantPatch, by: string): Promise<AssistantSettingsView> {
@@ -222,6 +248,7 @@ export class AssistantService {
         parseAt,
         parseDuration,
         image: (a, at) => this.sendPicture(a, at, m.message_id, pictures),
+        docs: this.docs && this.docsRoot() ? this.docs : undefined,
       };
       const opsRuntime: OpsRuntime | undefined = opsMode ? this.ops.agentRuntime(d.fromId, tg.chatId) : undefined;
       const res = await answer({ question: d.question, thread, replyTo, now: Date.now(), boardUrl: this.hub.cfg.publicUrl, ops: opsRuntime }, this.chatFactory(key, model), tools);

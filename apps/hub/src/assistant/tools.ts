@@ -1,12 +1,14 @@
 import { Bundle, HubEvent, Series } from '../contract';
+import { DocsApi } from './notion';
 import { ToolDef } from './openrouter';
 
 /**
  * The assistant's tools. Every one is a read of the same facts the board and
  * `vpnmap` show (board_image sends a picture of them to the chat); there is
  * no tool that changes anything, so the model cannot
- * touch the map or a server whatever it is told. Outputs are compacted and
- * capped so one call cannot flood the context.
+ * touch the map or a server whatever it is told. The docs tools read the
+ * project's Notion pages (notion.ts only sends GETs). Outputs are compacted
+ * and capped so one call cannot flood the context.
  */
 
 export const MAX_TOOL_OUTPUT = 8000;
@@ -60,6 +62,19 @@ export const IMAGE_TOOL: ToolDef = fn(
   },
 );
 
+/**
+ * Offered only when NOTION_TOKEN is set: the project's written documentation
+ * (architecture, servers, runbook, known issues, changelog). Read-only.
+ */
+export const DOCS_TOOLS: ToolDef[] = [
+  fn(
+    'docs_read',
+    'Read one page of the VPN documentation in Notion as text. No page = the main page (TL;DR, quick reference, rules, index of sub-pages, changelog). The result lists subpages and linked pages with their ids; long pages come in parts (part 2, 3...).',
+    { page: { type: 'string', description: 'Page id or Notion URL from subpages, linked or docs_search. Omit for the main page.' }, part: { type: 'number', description: 'Part number for long pages, default 1.' } },
+  ),
+  fn('docs_search', 'Full-text search over all VPN documentation pages in Notion. Returns up to 8 snippets with the page id; then docs_read that page for the full text. Use English technical words (names, ports, tools), e.g. "relay-ctl forwards", "port 9000".', { query: { type: 'string' } }, ['query']),
+];
+
 function fn(name: string, description: string, properties: Record<string, unknown>, required: string[] = []): ToolDef {
   return { type: 'function', function: { name, description, parameters: { type: 'object', properties, required, additionalProperties: false } } };
 }
@@ -72,6 +87,8 @@ export interface ToolContext {
   parseDuration: (v: string | undefined | null, def: number) => number;
   /** Sends a picture of the board to the chat; set only when Telegram is on. */
   image?: (args: Record<string, unknown>, at: number | null) => Promise<unknown>;
+  /** The Notion documentation; set only when NOTION_TOKEN is configured. */
+  docs?: DocsApi;
 }
 
 /** Run one tool call; errors come back as text for the model, never thrown. */
@@ -134,6 +151,12 @@ async function dispatch(name: string, a: any, t: number | null, ctx: ToolContext
       const series = await api.metrics({ entity: String(a.id ?? ''), spanMs, until: t });
       return series.map(summarise);
     }
+    case 'docs_read':
+      if (!ctx.docs) throw new Error('the documentation is not connected');
+      return ctx.docs.read(a.page ? String(a.page) : undefined, Number(a.part ?? 1));
+    case 'docs_search':
+      if (!ctx.docs) throw new Error('the documentation is not connected');
+      return ctx.docs.search(String(a.query ?? ''));
     case 'board_image':
       if (!ctx.image) throw new Error('pictures cannot be sent here');
       return ctx.image(a, t);

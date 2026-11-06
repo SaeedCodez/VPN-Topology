@@ -24,6 +24,8 @@ export interface Config {
   rwApiToken?: string;
   xui: Map<string, { url: string; user: string; pass: string }>;
   telegram?: { apiRoot: string; token: string; chatId: string };
+  /** Read-only Notion docs for the assistant; rootPage empty = map.yaml `docs:`. */
+  notion?: { token: string; rootPage?: string };
   demoBackfillHours: number;
   tickMs: number;
   webOrigin?: string;
@@ -80,6 +82,7 @@ export function loadConfig(env = process.env): Config {
     // Compose passes unset variables as "", so an empty TELEGRAM_API_ROOT means
     // the default (direct to api.telegram.org; the hub has open internet).
     telegram: env.TELEGRAM_BOT_TOKEN?.trim() && env.TELEGRAM_CHAT_ID?.trim() ? { apiRoot: env.TELEGRAM_API_ROOT?.trim() || 'https://api.telegram.org', token: env.TELEGRAM_BOT_TOKEN.trim(), chatId: env.TELEGRAM_CHAT_ID.trim() } : undefined,
+    notion: env.NOTION_TOKEN?.trim() ? { token: env.NOTION_TOKEN.trim(), rootPage: env.NOTION_ROOT_PAGE?.trim() || undefined } : undefined,
     demoBackfillHours: Number(env.DEMO_BACKFILL_HOURS ?? 25),
     tickMs: Number(env.TICK_MS ?? 5000),
     webOrigin: env.WEB_ORIGIN,

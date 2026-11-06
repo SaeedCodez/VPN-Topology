@@ -150,6 +150,7 @@ serves `/agent/install.sh`, `/agent/uninstall.sh` and the agent binaries
 | `PROBE_TOKEN`, `PROBE_OUTBOUND_MAIN`, `PROBE_OUTBOUND_MULLVAD_DE/US/TR`, `PROBE_SUBSCRIPTION_ID` | probe container: push token, and the monitoring user's sing-box outbounds and shortUuid |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram alerts (live mode only). Empty → off. `vpnmap telegram status` / `vpnmap telegram test` |
 | `TELEGRAM_API_ROOT` | the Cloudflare Worker relay URL (see below); empty = `https://api.telegram.org` |
+| `NOTION_TOKEN`, `NOTION_ROOT_PAGE` | read-only Notion docs for the Telegram assistant (see below). Empty token → off; empty root → the `docs:` link in `topology/map.yaml` |
 | `TOPOLOGY_ROOT`, `VPNMAP_BIN`, `AGENT_DIST_DIR` | set in the image |
 | `NPM_REGISTRY`, `ALPINE_MIRROR`, `GOPROXY` | build mirrors |
 
@@ -192,7 +193,8 @@ Persian from the same facts as the board.
 
 - **Read-only by construction**: its only tools are `list_entities`, `status`,
   `diagnose`, `describe`, `why`, `path`, `events`, `metrics` (each with `at`),
-  and `board_image`, which sends a picture of the board to the same chat.
+  `board_image`, which sends a picture of the board to the same chat, and,
+  when connected, `docs_read` / `docs_search` (Notion, below).
   A reply to an alert looks at the moment of that alert; a reply to an answer
   (or to a picture) continues the conversation.
 - **Settings on the board** (Assistant button): on/off, OpenRouter key, model,
@@ -207,6 +209,24 @@ Persian from the same facts as the board.
 - Privacy: questions and the board facts the model looks up (names, IPs,
   users, events) go to OpenRouter and the model's provider. Secrets are not
   part of the board data.
+- **Notion docs (optional, read-only)**: with `NOTION_TOKEN` set it also gets
+  `docs_read` (one page as text, in parts; no page = the main page) and
+  `docs_search` (full text over every page under the root), for how/why
+  questions, history and runbook commands. The live map stays the source for
+  the current state; the prompt says so and treats Notion text as data.
+  - Setup: notion.so/profile/integrations → New integration (internal) →
+    capabilities: **Read content only** (no Update/Insert content, no
+    comments, no user info). Then on the "VPN Infrastructure" page: ··· →
+    Connections → add the integration (sub-pages inherit). Put the token in
+    Coolify as `NOTION_TOKEN`, redeploy, and press **Test Notion** in the
+    Assistant panel.
+  - Why read-only: the pages are the runbook people and agents act on, and
+    the assistant reads text from Telegram and, in ops mode, from server logs;
+    an injected edit to the runbook would be a path to a harmful change.
+  - Held three ways: the integration has no write capability, the hub only
+    sends GET requests (`apps/hub/src/assistant/notion.ts`), and a page is
+    served only if its parent chain reaches the root page. Page text goes
+    through the same secret masking as ops output before it reaches the model.
 
 ### Ops actions (closed catalog, owner-approved)
 

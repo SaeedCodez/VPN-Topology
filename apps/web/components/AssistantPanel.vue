@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AssistantModel, AssistantSettingsView, AssistantTestResult } from '#contract'
+import type { AssistantDocsTestResult, AssistantModel, AssistantSettingsView, AssistantTestResult } from '#contract'
 
 /**
  * Settings of the Telegram assistant. The OpenRouter key is write-only: it is
@@ -16,6 +16,8 @@ const saved = ref<string | null>(null)
 const busy = ref(false)
 const testing = ref(false)
 const test = ref<AssistantTestResult | null>(null)
+const docsTesting = ref(false)
+const docsTest = ref<AssistantDocsTestResult | null>(null)
 
 const form = reactive({ enabled: false, model: '', allowedUserIds: '', dailyLimit: 50 })
 const newKey = ref('')
@@ -100,6 +102,18 @@ async function runTest() {
     test.value = { ok: false, model: form.model, ms: 0, error: e.message }
   } finally {
     testing.value = false
+  }
+}
+
+async function runDocsTest() {
+  docsTesting.value = true
+  docsTest.value = null
+  try {
+    docsTest.value = await assistant.docsTest()
+  } catch (e: any) {
+    docsTest.value = { ok: false, ms: 0, error: e.message }
+  } finally {
+    docsTesting.value = false
   }
 }
 
@@ -197,6 +211,20 @@ const price = (m: AssistantModel) => (m.promptPrice == null ? '' : `$${m.promptP
         <template v-else>{{ test.error }}</template>
       </p>
 
+      <!-- Notion docs (read-only) -->
+      <div class="card space-y-1.5 p-4 text-[13.5px]">
+        <div class="label mb-1">Notion docs</div>
+        <div class="flex items-center justify-between gap-3">
+          <span v-if="view.docs.enabled" class="text-fg-2">Read-only, pages under <code class="font-mono">{{ view.docs.root }}</code></span>
+          <span v-else class="text-fg-3">Off: {{ view.docs.reason }}</span>
+          <button v-if="view.docs.enabled" class="btn shrink-0" :disabled="docsTesting" title="Reads the root page once" @click="runDocsTest">{{ docsTesting ? 'Testing…' : 'Test Notion' }}</button>
+        </div>
+        <p v-if="docsTest" :class="docsTest.ok ? 'text-ok' : 'text-down'">
+          <template v-if="docsTest.ok">“{{ docsTest.title }}” · {{ docsTest.subpages }} sub-pages · {{ (docsTest.ms / 1000).toFixed(1) }} s</template>
+          <template v-else>{{ docsTest.error }}</template>
+        </p>
+      </div>
+
       <!-- Status -->
       <div class="card space-y-1.5 p-4 text-[13.5px]">
         <div class="label mb-1">Today ({{ view.usage.day }})</div>
@@ -209,7 +237,7 @@ const price = (m: AssistantModel) => (m.promptPrice == null ? '' : `$${m.promptP
       </div>
 
       <p class="text-[13px] leading-5 text-fg-3">
-        Privacy: each question and the board facts the model looks up (names, IPs, users, events) are sent to OpenRouter and the model's provider. Keys, tokens and passwords are not part of the board data.
+        Privacy: each question and the board facts the model looks up (names, IPs, users, events) are sent to OpenRouter and the model's provider. Keys, tokens and passwords are not part of the board data.<template v-if="view.docs.enabled"> Notion pages the model reads go there too, after secret masking.</template>
       </p>
     </template>
   </div>
