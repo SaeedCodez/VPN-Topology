@@ -385,6 +385,17 @@ export interface AssistantSettingsView {
   lastError: { at: string; error: string } | null;
   /** Last message for the bot from a Telegram user who is not allowed (to find your own id). */
   lastIgnored: { at: string; fromId: string; fromName: string } | null;
+  /** Read-only Notion documentation (NOTION_TOKEN); `root` is the page id the assistant may read under. */
+  docs: { enabled: boolean; reason?: string; root?: string };
+}
+
+export interface AssistantDocsTestResult {
+  ok: boolean;
+  ms: number;
+  /** Title of the root page and how many sub-pages it has. */
+  title?: string;
+  subpages?: number;
+  error?: string;
 }
 
 export interface AssistantModel {

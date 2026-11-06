@@ -326,6 +326,12 @@ export class ApiController {
     return this.hub.assistant.test();
   }
 
+  /** Reads the Notion root page once (token valid, page connected to the integration). */
+  @Post('assistant/docs-test')
+  assistantDocsTest() {
+    return this.hub.assistant.docsTest();
+  }
+
   // ------------------------------------------------------------- ops (docs/ops-actions.md)
   // Behind the global auth guard; every write is refused in demo mode (which
   // has no login) except the kill switch.

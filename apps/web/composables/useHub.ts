@@ -1,4 +1,4 @@
-import type { AssistantModel, AssistantSettingsView, AssistantTestResult, Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario, OpsSettingsView, OpsTaskView } from '#contract'
+import type { AssistantDocsTestResult, AssistantModel, AssistantSettingsView, AssistantTestResult, Bundle, Describe, HubEvent, Series, Snapshot, DemoScenario, OpsSettingsView, OpsTaskView } from '#contract'
 
 /**
  * Client state of the board. Everything comes from the hub API; the browser
@@ -206,6 +206,7 @@ const assistant = {
     api<AssistantSettingsView>('/api/assistant', { method: 'PUT', body: JSON.stringify(patch) }),
   models: () => api<AssistantModel[]>('/api/assistant/models'),
   test: () => api<AssistantTestResult>('/api/assistant/test', { method: 'POST', body: '{}' }),
+  docsTest: () => api<AssistantDocsTestResult>('/api/assistant/docs-test', { method: 'POST', body: '{}' }),
 }
 
 /** Pictures of the board: the hub draws them (same as the Telegram assistant sends). */
